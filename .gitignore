@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+.DS_Store
+temp-app-creation
+coverage
+.nyc_output
