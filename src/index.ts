@@ -60,6 +60,17 @@ async function startHttpServer() {
     next();
   };
 
+  // CSP Middleware for Embedded App Support
+  app.use((req, res, next) => {
+    // specific valid shopify domains for frame-ancestors
+    // We allow admin.shopify.com and any myshopify.com domain
+    res.setHeader(
+      "Content-Security-Policy", 
+      "frame-ancestors https://admin.shopify.com https://*.myshopify.com;"
+    );
+    next();
+  });
+
   app.use(cors());
   app.use(express.json());
 
@@ -67,6 +78,52 @@ async function startHttpServer() {
   const transports = new Map<string, SSEServerTransport>();
 
   // START OAUTH ROUTES
+  app.get("/", (req, res) => {
+    const shop = req.query.shop as string;
+    const isEmbedded = req.query.embedded === "1";
+    
+    // Simple Dashboard for Embedded View
+     const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Shopify MCP Server</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; color: #202223; }
+            .card { background: white; border: 1px solid #e1e3e5; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            h2 { margin-top: 0; color: #008060; }
+            code { background: #f4f6f8; padding: 2px 5px; border-radius: 4px; }
+            .copy-btn { cursor: pointer; color: #008060; text-decoration: underline; font-size: 0.9em; border:none; background:none; }
+        </style>
+        <script>
+            // Simple App Bridge setup (optional but recommended for UX if we had full logic)
+            // For now, we just show static info
+        </script>
+    </head>
+    <body>
+        <h1>🛍️ MCP Server Reference</h1>
+        
+        <div class="card">
+            <h2>Connection Details</h2>
+            <p>Use these details to connect your AI Agent or n8n:</p>
+            <ul>
+                <li><strong>SSE URL:</strong> <code>${process.env.HOST}/sse</code></li>
+                <li><strong>Auth Header:</strong> <code>Authorization: Bearer (See Env)</code></li>
+                <li><strong>Shop Header:</strong> <code>X-Shopify-Domain: ${shop || "your-shop.myshopify.com"}</code></li>
+            </ul>
+        </div>
+        
+        <div class="card">
+            <h2>Status</h2>
+            <p>✅ Server is running.</p>
+            <p><a href="/debug" target="_blank">View System Debug Info</a></p>
+        </div>
+    </body>
+    </html>
+    `;
+    res.send(html);
+  });
   app.get("/auth", async (req, res) => {
     if (!req.query.shop) {
         return res.status(400).send("Missing shop parameter. e.g. /auth?shop=my-store.myshopify.com");
