@@ -4,8 +4,10 @@ services:
   shopify-mcp-server:
     build: .
     container_name: shopify-mcp
+    restart: always
     ports:
-      - "3000:3000"
+      # Allow host port override via env, default to 3000
+      - "${SERVER_PORT:-3000}:3000"
     environment:
       # --- General ---
       PORT: 3000
@@ -14,16 +16,14 @@ services:
       MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN}
       
       # --- Shopify OAuth (Required for App Install) ---
-      HOST: ${HOST} # Public URL (e.g. https://mcp.yourdomain.com)
+      HOST: ${HOST} 
       SHOPIFY_API_KEY: ${SHOPIFY_API_KEY}
       SHOPIFY_API_SECRET: ${SHOPIFY_API_SECRET}
       
-      # --- Legacy / Single Tenant (Optional Fallback) ---
-      SHOPIFY_SHOP_DOMAIN: ${SHOPIFY_SHOP_DOMAIN}
-      SHOPIFY_ACCESS_TOKEN: ${SHOPIFY_ACCESS_TOKEN}
-      
-    restart: always
-
-# Note for Coolify:
-# 1. Add this repository to Coolify.
-# 2. Set the 'HOST', 'SHOPIFY_API_KEY', 'SHOPIFY_API_SECRET', and 'MCP_SERVER_TOKEN' in the "Environment Variables" section of the project.
+    # Healthcheck for Coolify/Docker auto-restart
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
