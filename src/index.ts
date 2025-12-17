@@ -80,45 +80,225 @@ async function startHttpServer() {
   // START OAUTH ROUTES
   app.get("/", (req, res) => {
     const shop = req.query.shop as string;
-    const isEmbedded = req.query.embedded === "1";
     
-    // Simple Dashboard for Embedded View
+    // Polaris-inspired UI
      const html = `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Shopify MCP Server</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; color: #202223; }
-            .card { background: white; border: 1px solid #e1e3e5; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-            h2 { margin-top: 0; color: #008060; }
-            code { background: #f4f6f8; padding: 2px 5px; border-radius: 4px; }
-            .copy-btn { cursor: pointer; color: #008060; text-decoration: underline; font-size: 0.9em; border:none; background:none; }
+            :root {
+                --p-color-bg-surface: #fff;
+                --p-color-bg-app: #f1f2f3;
+                --p-color-text: #202223;
+                --p-color-text-subdued: #6d7175;
+                --p-color-border: #e1e3e5;
+                --p-color-action: #008060;
+                --p-border-radius: 8px;
+                --p-space-4: 16px;
+                --p-space-5: 20px;
+            }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                background-color: var(--p-color-bg-app);
+                color: var(--p-color-text);
+                margin: 0;
+                padding: 20px;
+                display: flex;
+                justify-content: center;
+            }
+            .container {
+                max-width: 900px;
+                width: 100%;
+            }
+            .header {
+                margin-bottom: 20px;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+            }
+            .header h1 {
+                font-size: 24px;
+                font-weight: 600;
+                margin: 0;
+            }
+            .badge {
+                background: #cbf4c9;
+                color: #0e4e0d;
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            .card {
+                background: var(--p-color-bg-surface);
+                border: 1px solid var(--p-color-border);
+                border-radius: var(--p-border-radius);
+                padding: var(--p-space-5);
+                margin-bottom: var(--p-space-5);
+                box-shadow: 0 0 0 1px rgba(63, 63, 68, 0.05), 0 1px 3px 0 rgba(63, 63, 68, 0.15);
+            }
+            .card-title {
+                font-size: 16px;
+                font-weight: 600;
+                margin-top: 0;
+                margin-bottom: 16px;
+            }
+            .field-group {
+                margin-bottom: 16px;
+            }
+            .label {
+                display: block;
+                font-size: 13px;
+                margin-bottom: 4px;
+                color: var(--p-color-text-subdued);
+            }
+            .input-wrapper {
+                display: flex;
+                gap: 8px;
+            }
+            .code-input {
+                flex: 1;
+                font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+                font-size: 14px;
+                padding: 8px 12px;
+                border: 1px solid var(--p-color-border);
+                border-radius: 4px;
+                background: #fafbfc;
+                color: #202223;
+            }
+            .btn {
+                cursor: pointer;
+                background: white;
+                border: 1px solid var(--p-color-border);
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: 500;
+                color: var(--p-color-text);
+                transition: background 0.2s;
+            }
+            .btn:hover {
+                background: #f6f6f7;
+            }
+            .btn-primary {
+                background: var(--p-color-action);
+                color: white;
+                border: none;
+            }
+            .btn-primary:hover {
+                background: #006e52;
+            }
+            .steps {
+                counter-reset: step;
+                list-style: none;
+                padding: 0;
+            }
+            .step {
+                position: relative;
+                padding-left: 40px;
+                margin-bottom: 16px;
+            }
+            .step::before {
+                counter-increment: step;
+                content: counter(step);
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 24px;
+                height: 24px;
+                background: var(--p-color-bg-app);
+                border: 1px solid var(--p-color-border);
+                border-radius: 50%;
+                text-align: center;
+                line-height: 24px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            .footer-link {
+                color: var(--p-color-text-subdued);
+                text-decoration: none;
+                font-size: 13px;
+                display: inline-block;
+                margin-top: 20px;
+            }
+            .footer-link:hover {
+                text-decoration: underline;
+            }
         </style>
-        <script>
-            // Simple App Bridge setup (optional but recommended for UX if we had full logic)
-            // For now, we just show static info
-        </script>
     </head>
     <body>
-        <h1>🛍️ MCP Server Reference</h1>
-        
-        <div class="card">
-            <h2>Connection Details</h2>
-            <p>Use these details to connect your AI Agent or n8n:</p>
-            <ul>
-                <li><strong>SSE URL:</strong> <code>${process.env.HOST}/sse</code></li>
-                <li><strong>Auth Header:</strong> <code>Authorization: Bearer (See Env)</code></li>
-                <li><strong>Shop Header:</strong> <code>X-Shopify-Domain: ${shop || "your-shop.myshopify.com"}</code></li>
-            </ul>
+        <div class="container">
+            <div class="header">
+                <h1>MCP Server Connection</h1>
+                <span class="badge">Active</span>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">🔌 Connect your Agent</h2>
+                <p style="margin-bottom: 20px; color: #5c5f62;">Use these credentials to connect <strong>n8n</strong> or any <strong>MCP Client</strong> to this store.</p>
+
+                <div class="field-group">
+                    <label class="label">SSE URL Endpoint</label>
+                    <div class="input-wrapper">
+                        <input type="text" class="code-input" value="${process.env.HOST}/sse" readonly id="url">
+                        <button class="btn" onclick="copy('url')">Copy</button>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <label class="label">Authorization Header</label>
+                    <div class="input-wrapper">
+                        <input type="text" class="code-input" value="Bearer ${process.env.MCP_SERVER_TOKEN || 'See Server Env'}" readonly id="auth">
+                        <button class="btn" onclick="copy('auth')">Copy</button>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <label class="label">Shop Header (X-Shopify-Domain)</label>
+                    <div class="input-wrapper">
+                        <input type="text" class="code-input" value="${shop || 'missing-shop-param'}" readonly id="shop">
+                        <button class="btn" onclick="copy('shop')">Copy</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="card-title">📝 Setup Instructions</h2>
+                <ol class="steps">
+                    <li class="step">Open your n8n workflow or MCP Client configuration.</li>
+                    <li class="step">Select <strong>SSE Client</strong> or generic HTTP Stream node.</li>
+                    <li class="step">Paste the <strong>SSE URL</strong> from above.</li>
+                    <li class="step">Add two headers:
+                        <ul style="margin-top: 8px; color: #5c5f62;">
+                            <li><code>Authorization</code>: Paste the Bearer token.</li>
+                            <li><code>X-Shopify-Domain</code>: Paste the Shop domain.</li>
+                        </ul>
+                    </li>
+                    <li class="step">Save and Connect! Your agent now has access to Products and Orders.</li>
+                </ol>
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="/debug" target="_blank" class="footer-link">View System Health & Debug Info →</a>
+            </div>
         </div>
-        
-        <div class="card">
-            <h2>Status</h2>
-            <p>✅ Server is running.</p>
-            <p><a href="/debug" target="_blank">View System Debug Info</a></p>
-        </div>
+
+        <script>
+            function copy(id) {
+                const el = document.getElementById(id);
+                el.select();
+                navigator.clipboard.writeText(el.value);
+                
+                const btn = el.nextElementSibling;
+                const original = btn.innerText;
+                btn.innerText = 'Copied!';
+                setTimeout(() => btn.innerText = original, 2000);
+            }
+        </script>
     </body>
     </html>
     `;
