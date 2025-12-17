@@ -104,6 +104,65 @@ async function startHttpServer() {
     res.json({ status: "ok", mode: "http", clients: transports.size });
   });
 
+  app.get("/debug", (req, res) => {
+    const memUsage = process.memoryUsage();
+    
+    // Mask secrets
+    const mask = (str?: string) => str ? `${str.substring(0, 4)}...${str.substring(str.length - 4)}` : "NOT_SET";
+    
+    const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Shopify MCP Server Debug</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f6f8; color: #202223; }
+            .card { background: white; border: 1px solid #e1e3e5; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+            h2 { margin-top: 0; color: #008060; }
+            .ok { color: #008060; font-weight: bold; }
+            .err { color: #d82c0d; font-weight: bold; }
+            pre { background: #fafbfc; padding: 10px; border-radius: 4px; overflow-x: auto; }
+            table { width: 100%; border-collapse: collapse; }
+            td, th { text-align: left; padding: 8px; border-bottom: 1px solid #eee; }
+        </style>
+    </head>
+    <body>
+        <h1>🚀 Shopify MCP Server Status</h1>
+        
+        <div class="card">
+            <h2>System Health</h2>
+            <table>
+                <tr><td>Running Since</td><td>${new Date().toISOString()}</td></tr>
+                <tr><td>Active MCP Clients (SSE)</td><td>${transports.size}</td></tr>
+                <tr><td>Memory (Heap Used)</td><td>${Math.round(memUsage.heapUsed / 1024 / 1024)} MB</td></tr>
+                <tr><td>Node Version</td><td>${process.version}</td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Configuration Check</h2>
+            <table>
+                <tr><td>HOST</td><td>${process.env.HOST || "<span class='err'>MISSING</span>"}</td></tr>
+                <tr><td>SHOPIFY_API_KEY</td><td>${process.env.SHOPIFY_API_KEY ? `<span class='ok'>SET</span> (${process.env.SHOPIFY_API_KEY})` : "<span class='err'>MISSING</span>"}</td></tr>
+                <tr><td>SHOPIFY_API_SECRET</td><td>${process.env.SHOPIFY_API_SECRET ? "<span class='ok'>SET</span> (Hidden)" : "<span class='err'>MISSING</span>"}</td></tr>
+                <tr><td>MCP_SERVER_TOKEN</td><td>${process.env.MCP_SERVER_TOKEN ? "<span class='ok'>SET</span> (Hidden)" : "<span class='err'>MISSING</span>"}</td></tr>
+                <tr><td>Port</td><td>${port} (External Env: ${process.env.SERVER_PORT || "Default"})</td></tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Actions</h2>
+            <p>
+                <a href="/auth?shop=YOUR_SHOP_DOMAIN.myshopify.com" target="_blank" style="background: #008060; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px;">Test OAuth Flow</a>
+                <span style="color: #6d7175; font-size: 0.9em;">(Replace YOUR_SHOP_DOMAIN in URL)</span>
+            </p>
+        </div>
+    </body>
+    </html>
+    `;
+    res.send(html);
+  });
+
   // SSE Endpoint
   app.get("/sse", authMiddleware, async (req, res) => {
     console.log("New SSE connection...");
