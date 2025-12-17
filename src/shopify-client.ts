@@ -136,3 +136,26 @@ export async function createProduct(input: { title: string; description?: string
   
   return data.productCreate?.product;
 }
+
+export async function getProduct(id: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetProduct($id: ID!) {
+      product(id: $id) {
+        id
+        title
+        handle
+        descriptionHtml
+        totalInventory
+        status
+        priceRangeV2 {
+          minVariantPrice {
+            amount
+            currencyCode
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id }, shopDomain, accessToken);
+  return data.product;
+}
