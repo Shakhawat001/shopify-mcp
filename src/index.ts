@@ -33,7 +33,7 @@ async function startHttpServer() {
   const shopify = shopifyApi({
     apiKey: process.env.SHOPIFY_API_KEY || "invalid_key",
     apiSecretKey: process.env.SHOPIFY_API_SECRET || "invalid_secret",
-    scopes: ["read_products", "read_orders"],
+    scopes: ["read_products", "write_products", "read_orders"],
     hostName: process.env.HOST ? process.env.HOST.replace(/https?:\/\//, "") : "localhost:3000",
     apiVersion: ApiVersion.January25, 
     isEmbeddedApp: false,

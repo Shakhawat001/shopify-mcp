@@ -100,3 +100,39 @@ export async function getRecentOrders(first = 5, shopDomain?: string, accessToke
   `;
   return shopifyGraphQL(query, { first });
 }
+
+export async function createProduct(input: { title: string; description?: string; price?: string; status?: "ACTIVE" | "DRAFT" | "ARCHIVED" }, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation productCreate($input: ProductInput!) {
+      productCreate(input: $input) {
+        product {
+          id
+          title
+          handle
+          status
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables = {
+    input: {
+      title: input.title,
+      descriptionHtml: input.description,
+      status: input.status,
+      variants: input.price ? [{ price: input.price }] : undefined,
+    }
+  };
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.productCreate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.productCreate.userErrors)}`);
+  }
+  
+  return data.productCreate?.product;
+}

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getProducts, getRecentOrders } from "./shopify-client.js";
+import { getProducts, getRecentOrders, createProduct } from "./shopify-client.js";
 import { Session } from "@shopify/shopify-api";
 
 export function createShopifyServer(session?: Session) {
@@ -152,6 +152,42 @@ export function createShopifyServer(session?: Session) {
               text: `Failed to trigger n8n workflow: ${error.message}`
             }]
           };
+      }
+    }
+  );
+    }
+  );
+
+  // Tool: shopify_create_product
+  server.tool(
+    "shopify_create_product",
+    "Create a new product in the store",
+    {
+      title: z.string().describe("Title of the product"),
+      description: z.string().optional().describe("HTML description of the product"),
+      price: z.string().optional().describe("Price of the product (e.g. '19.99')"),
+      status: z.enum(["ACTIVE", "DRAFT", "ARCHIVED"]).optional().describe("Product status"),
+    },
+    async (args) => {
+      try {
+        const product = await createProduct(
+            args,
+            session?.shop, 
+            session?.accessToken
+        );
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(product, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating product: ${error.message}`
+          }]
+        };
       }
     }
   );

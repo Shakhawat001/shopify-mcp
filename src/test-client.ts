@@ -28,6 +28,19 @@ async function main() {
     // List tools to verify full handshake
     const tools = await client.listTools();
     console.log("✅ Tools received:", tools.tools.map(t => t.name));
+
+    // Verify Create Product
+    console.log("🛠️ Testing shopify_create_product...");
+    const result = await client.callTool({
+        name: "shopify_create_product",
+        arguments: {
+            title: "MCP Created Product " + new Date().toISOString(),
+            description: "Created via MCP Tool",
+            price: "50.00",
+            status: "DRAFT"
+        }
+    });
+    console.log("✅ Product Created:", result);
     
     await client.close();
   } catch (error) {
