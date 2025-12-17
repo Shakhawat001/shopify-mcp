@@ -409,6 +409,13 @@ async function startHttpServer() {
   app.get("/sse", authMiddleware, async (req, res) => {
     console.log("New SSE connection...");
     
+    // CRITICAL: Disable Nginx Buffering for SSE (Coolify/Docker)
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders(); // Flush immediately
+    
     // Determine which Shopify Session to use
     // Option A: Env var (Single Tenant legacy)
     // Option B: Header (Multi-tenant)
