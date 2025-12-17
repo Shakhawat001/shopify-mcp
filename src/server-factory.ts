@@ -155,8 +155,6 @@ export function createShopifyServer(session?: Session) {
       }
     }
   );
-    }
-  );
 
   // Tool: shopify_create_product
   server.tool(
