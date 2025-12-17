@@ -426,19 +426,17 @@ async function startHttpServer() {
     if (targetShop) {
         shopifySession = await sessionStorage.findSessionByShop(targetShop);
         if (!shopifySession) {
-             console.warn(`[SSE] Requested shop ${targetShop} not found in stored sessions.`);
-             console.log(`[SSE] Falling back to SINGLE-TENANT environment variables.`);
-             // Proceed with undefined session -> triggers env var usage in client
+             console.warn(`[SSE] Requested shop ${targetShop} not found in session storage.`);
+             // We might continue if they use Env var fallback inside the client...
         } else {
              console.log(`[SSE] Connected context to shop: ${targetShop}`);
         }
-    } else {
-        console.log(`[SSE] No shop context provided. Using SINGLE-TENANT environment variables.`);
     }
 
     const transport = new SSEServerTransport("/message", res);
     
-    // Create server (Factory will use Session if found, or Env Vars if undefined)
+    // Pass session to factory (TODO: Update factory to accept session)
+    // For now, factory uses Env var. We need to refactor factory next.
     const server = createShopifyServer(shopifySession);
     
     const sessionId = uuidv4();

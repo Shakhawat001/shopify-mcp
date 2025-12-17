@@ -98,5 +98,5 @@ export async function getRecentOrders(first = 5, shopDomain?: string, accessToke
             displayFulfillmentStatus
     }
   `;
-  return shopifyGraphQL(query, { first }, shopDomain, accessToken);
+  return shopifyGraphQL(query, { first });
 }
