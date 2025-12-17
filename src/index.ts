@@ -60,8 +60,10 @@ async function startHttpServer() {
     const isQueryValid = queryToken && queryToken === expectedToken;
 
     if (!isHeaderValid && !isQueryValid) {
+      console.log(`[Auth] Failed. Header: ${!!authHeader}, Query: ${!!queryToken}`);
       return res.status(401).json({ error: "Unauthorized" });
     }
+    // console.log(`[Auth] Passed. Path: ${req.path}`);
     next();
   };
 
@@ -410,11 +412,9 @@ async function startHttpServer() {
     console.log("New SSE connection...");
     
     // CRITICAL: Disable Nginx Buffering for SSE (Coolify/Docker)
+    // We only set this. The SDK (SSEServerTransport) sets Content-Type, Connection, etc.
+    // Do NOT call res.flushHeaders() here, or the SDK will crash with ERR_HTTP_HEADERS_SENT.
     res.setHeader('X-Accel-Buffering', 'no');
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders(); // Flush immediately
     
     // Determine which Shopify Session to use
     // Option A: Env var (Single Tenant legacy)
@@ -440,7 +440,11 @@ async function startHttpServer() {
     const server = createShopifyServer(shopifySession);
     
     const sessionId = uuidv4();
-    const sessionAwareTransport = new SSEServerTransport(`/message?sessionId=${sessionId}`, res);
+    // Propagate token to the POST endpoint for clients that can't set headers (n8n/Browser)
+    const queryToken = req.query.token as string;
+    const authQuery = queryToken ? `&token=${queryToken}` : "";
+    
+    const sessionAwareTransport = new SSEServerTransport(`/message?sessionId=${sessionId}${authQuery}`, res);
     transports.set(sessionId, sessionAwareTransport);
 
     sessionAwareTransport.onclose = () => {
