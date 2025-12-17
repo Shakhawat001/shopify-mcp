@@ -41,20 +41,25 @@ async function startHttpServer() {
 
   // Bearer Token Auth Middleware (for MCP Client protection)
   const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const authHeader = req.headers.authorization;
-    const expectedToken = process.env.MCP_SERVER_TOKEN;
-    
     // Allow Auth handshake routes to pass without MCP token
     if (req.path.startsWith("/auth")) {
         return next();
     }
-    
+
+    const expectedToken = process.env.MCP_SERVER_TOKEN;
     if (!expectedToken) {
         console.warn("MCP_SERVER_TOKEN not set via environment. Endpoints are unprotected!");
         return next();
     }
 
-    if (!authHeader || authHeader !== `Bearer ${expectedToken}`) {
+    const authHeader = req.headers.authorization;
+    const queryToken = req.query.token as string;
+
+    // Check Header OR Query Param
+    const isHeaderValid = authHeader && authHeader === `Bearer ${expectedToken}`;
+    const isQueryValid = queryToken && queryToken === expectedToken;
+
+    if (!isHeaderValid && !isQueryValid) {
       return res.status(401).json({ error: "Unauthorized" });
     }
     next();
@@ -407,7 +412,8 @@ async function startHttpServer() {
     // Determine which Shopify Session to use
     // Option A: Env var (Single Tenant legacy)
     // Option B: Header (Multi-tenant)
-    const targetShop = req.headers['x-shopify-domain'] as string;
+    // Option C: Query Param (Fallback for clients without Header support)
+    const targetShop = (req.headers['x-shopify-domain'] as string) || (req.query.shop as string);
     let shopifySession: Session | undefined;
 
     if (targetShop) {
