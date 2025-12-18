@@ -44,31 +44,44 @@ async function startHttpServer() {
     isEmbeddedApp: false,
   });
 
-  // Bearer Token Auth Middleware (for MCP Client protection)
-  const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    // Allow Auth handshake routes to pass without MCP token
+  // OAuth Session-Based Auth Middleware
+  // Authenticates requests by checking if the shop has completed OAuth
+  const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Allow Auth handshake routes to pass
     if (req.path.startsWith("/auth")) {
-        return next();
+      return next();
+    }
+    
+    // Allow public endpoints
+    if (req.path === "/health" || req.path === "/debug") {
+      return next();
     }
 
-    const expectedToken = process.env.MCP_SERVER_TOKEN;
-    if (!expectedToken) {
-        console.warn("MCP_SERVER_TOKEN not set via environment. Endpoints are unprotected!");
-        return next();
+    // Get shop domain from header or query param
+    const shopDomain = (req.headers['x-shopify-domain'] as string) || (req.query.shop as string);
+    
+    if (!shopDomain) {
+      console.log(`[Auth] Missing shop domain. Path: ${req.path}`);
+      return res.status(400).json({ 
+        error: "Missing shop identifier",
+        hint: "Provide X-Shopify-Domain header or ?shop= query parameter"
+      });
     }
 
-    const authHeader = req.headers.authorization;
-    const queryToken = req.query.token as string;
-
-    // Check Header OR Query Param
-    const isHeaderValid = authHeader && authHeader === `Bearer ${expectedToken}`;
-    const isQueryValid = queryToken && queryToken === expectedToken;
-
-    if (!isHeaderValid && !isQueryValid) {
-      console.log(`[Auth] Failed. Header: ${!!authHeader}, Query: ${!!queryToken}`);
-      return res.status(401).json({ error: "Unauthorized" });
+    // Check if shop has a valid OAuth session
+    const session = await sessionStorage.findSessionByShop(shopDomain);
+    
+    if (!session) {
+      console.log(`[Auth] No OAuth session for shop: ${shopDomain}`);
+      return res.status(401).json({ 
+        error: "Shop not authorized",
+        hint: `Complete OAuth first: ${process.env.HOST}/auth?shop=${shopDomain}`
+      });
     }
-    // console.log(`[Auth] Passed. Path: ${req.path}`);
+
+    // Attach session to request for later use
+    (req as any).shopifySession = session;
+    console.log(`[Auth] Authenticated via OAuth for: ${shopDomain}`);
     next();
   };
 
@@ -537,20 +550,6 @@ async function startHttpServer() {
                         
                         <div class="credential-item">
                             <div class="credential-label">
-                                Your Secret Token
-                            </div>
-                            <div class="credential-value">
-                                <input type="password" class="credential-input" value="${token}" readonly id="cred-token">
-                                <button class="btn btn-secondary btn-sm" onclick="toggleToken()">Show</button>
-                                <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-token')">Copy</button>
-                            </div>
-                            <small style="color: #b98900; display: block; margin-top: 8px; font-weight: 500;">
-                                Keep this secret. Never share it publicly.
-                            </small>
-                        </div>
-                        
-                        <div class="credential-item">
-                            <div class="credential-label">
                                 Your Shop Domain
                             </div>
                             <div class="credential-value">
@@ -558,7 +557,7 @@ async function startHttpServer() {
                                 <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-shop')">Copy</button>
                             </div>
                             <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
-                                This identifies which Shopify store to connect to
+                                This identifies which Shopify store to connect to. Use as X-Shopify-Domain header.
                             </small>
                         </div>
                     </div>
@@ -566,8 +565,8 @@ async function startHttpServer() {
                     <div class="info-box success" style="margin-top: 20px;">
                         <div class="info-box-icon" style="background: #aee9d1; color: #0d5c2f; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                         <div class="info-box-content">
-                            <div class="info-box-title">Quick Tip</div>
-                            <div class="info-box-text">Click the "Copy" button next to each credential to copy it to your clipboard. You'll paste these values into your AI tool's settings.</div>
+                            <div class="info-box-title">OAuth Authentication</div>
+                            <div class="info-box-text">No API token needed! Your store is authenticated via OAuth. Just provide your shop domain in requests.</div>
                         </div>
                     </div>
                 </div>
