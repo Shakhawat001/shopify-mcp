@@ -44,8 +44,8 @@ async function startHttpServer() {
     isEmbeddedApp: false,
   });
 
-  // OAuth Session-Based Auth Middleware
-  // Authenticates requests by checking if the shop has completed OAuth
+  // API Key Auth Middleware
+  // Authenticates MCP requests using per-store API keys
   const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     // Allow Auth handshake routes to pass
     if (req.path.startsWith("/auth")) {
@@ -53,35 +53,36 @@ async function startHttpServer() {
     }
     
     // Allow public endpoints
-    if (req.path === "/health" || req.path === "/debug") {
+    if (req.path === "/" || req.path === "/health" || req.path === "/debug") {
       return next();
     }
 
-    // Get shop domain from header or query param
-    const shopDomain = (req.headers['x-shopify-domain'] as string) || (req.query.shop as string);
-    
-    if (!shopDomain) {
-      console.log(`[Auth] Missing shop domain. Path: ${req.path}`);
-      return res.status(400).json({ 
-        error: "Missing shop identifier",
-        hint: "Provide X-Shopify-Domain header or ?shop= query parameter"
+    // Extract API key from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.log(`[Auth] Missing or invalid Authorization header. Path: ${req.path}`);
+      return res.status(401).json({ 
+        error: "Missing API key",
+        hint: "Provide Authorization: Bearer <your-api-key> header"
       });
     }
 
-    // Check if shop has a valid OAuth session
-    const session = await sessionStorage.findSessionByShop(shopDomain);
+    const apiKey = authHeader.substring(7); // Remove "Bearer " prefix
+    
+    // Find session by API key
+    const session = await sessionStorage.findSessionByApiKey(apiKey);
     
     if (!session) {
-      console.log(`[Auth] No OAuth session for shop: ${shopDomain}`);
+      console.log(`[Auth] Invalid API key: ${apiKey.substring(0, 12)}...`);
       return res.status(401).json({ 
-        error: "Shop not authorized",
-        hint: `Complete OAuth first: ${process.env.HOST}/auth?shop=${shopDomain}`
+        error: "Invalid API key",
+        hint: "Check your API key or reinstall the app"
       });
     }
 
     // Attach session to request for later use
     (req as any).shopifySession = session;
-    console.log(`[Auth] Authenticated via OAuth for: ${shopDomain}`);
+    console.log(`[Auth] Authenticated via API key for: ${session.shop}`);
     next();
   };
 
@@ -111,11 +112,20 @@ async function startHttpServer() {
   const transports = new Map<string, SSEServerTransport>();
 
   // START OAUTH ROUTES
-  app.get("/", (req, res) => {
+  app.get("/", async (req, res) => {
     const shop = req.query.shop as string;
     const host = process.env.HOST || 'https://your-server.com';
-    const token = process.env.MCP_SERVER_TOKEN || '';
-    const maskedToken = token ? `${token.substring(0, 4)}${'*'.repeat(Math.max(0, token.length - 8))}${token.substring(token.length - 4)}` : 'NOT_CONFIGURED';
+    
+    // Fetch API key for this shop if they've completed OAuth
+    let apiKey = '';
+    let isAuthorized = false;
+    if (shop) {
+      const storedSession = await sessionStorage.findSessionByShop(shop);
+      if (storedSession) {
+        apiKey = storedSession.apiKey;
+        isAuthorized = true;
+      }
+    }
     
     // Comprehensive Polaris-inspired Dashboard
     const html = `
@@ -643,7 +653,7 @@ async function startHttpServer() {
                                     <div class="step-code">
                                         <div><strong style="color: #9cdcfe;">SSE Endpoint:</strong> <span style="color: #ce9178;">${host}/sse</span></div>
                                         <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Authentication:</strong> <span style="color: #ce9178;">Bearer Token</span></div>
-                                        <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Token:</strong> <span style="color: #ce9178;">${maskedToken}</span></div>
+                                        <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">API Key:</strong> <span style="color: #ce9178;">${apiKey || 'Complete OAuth first'}</span></div>
                                     </div>
                                 </div>
                             </div>
@@ -714,7 +724,7 @@ async function startHttpServer() {
                                         <div><strong style="color: #9cdcfe;">URL:</strong> <span style="color: #ce9178;">${host}/mcp</span></div>
                                         <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Method:</strong> <span style="color: #ce9178;">POST</span></div>
                                         <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Headers:</strong></div>
-                                        <div style="margin-left: 16px;">Authorization: Bearer ${maskedToken}</div>
+                                        <div style="margin-left: 16px;">Authorization: Bearer ${apiKey || 'YOUR_API_KEY'}</div>
                                         <div style="margin-left: 16px;">X-Shopify-Domain: ${shop || 'your-store.myshopify.com'}</div>
                                         <div style="margin-left: 16px;">Content-Type: application/json</div>
                                     </div>
@@ -1153,27 +1163,21 @@ async function startHttpServer() {
     console.log("[MCP-TEST] Body:", JSON.stringify(req.body, null, 2));
     console.log("========================");
 
-    const targetShop = req.headers['x-shopify-domain'] as string;
-    let shopifySession: Session | undefined;
-    
-    if (targetShop) {
-      shopifySession = await sessionStorage.findSessionByShop(targetShop);
-    }
+    // Session is already attached by authMiddleware
+    const shopifySession = (req as any).shopifySession;
 
     res.json({
       success: true,
       message: "MCP server is reachable and authentication passed!",
       details: {
         authValid: true,
-        shopDomain: targetShop || "not provided",
+        shopDomain: shopifySession?.shop || "not found",
         shopifySessionFound: !!shopifySession,
         serverTime: new Date().toISOString(),
         mcpEndpoint: `${process.env.HOST}/mcp`,
         sseEndpoint: `${process.env.HOST}/sse`,
       },
-      nextSteps: !shopifySession ? [
-        `Your shop (${targetShop}) has not completed OAuth. Visit: ${process.env.HOST}/auth?shop=${targetShop}`
-      ] : [
+      nextSteps: [
         "Your connection is ready! Configure your MCP client to use the endpoints above."
       ]
     });
@@ -1198,20 +1202,9 @@ async function startHttpServer() {
     res.setHeader('Cache-Control', 'no-cache, no-transform'); // Prevent caching
     res.setHeader('X-Content-Type-Options', 'nosniff'); // Security header
     
-    // Determine which Shopify Session to use
-    const targetShop = (req.headers['x-shopify-domain'] as string) || (req.query.shop as string);
-    let shopifySession: Session | undefined;
-
-    if (targetShop) {
-        shopifySession = await sessionStorage.findSessionByShop(targetShop);
-        if (!shopifySession) {
-             console.warn(`[SSE] Requested shop ${targetShop} not found in session storage.`);
-        } else {
-             console.log(`[SSE] Connected context to shop: ${targetShop}`);
-        }
-    } else {
-        console.warn(`[SSE] No shop specified via header or query param`);
-    }
+    // Session is attached by authMiddleware
+    const shopifySession = (req as any).shopifySession;
+    console.log(`[SSE] Connected context to shop: ${shopifySession?.shop || 'unknown'}`);
 
     const server = createShopifyServer(shopifySession);
     
@@ -1300,16 +1293,10 @@ async function startHttpServer() {
     // Get session ID from header
     const sessionIdHeader = req.headers['mcp-session-id'] as string | undefined;
     
-    // Determine Shopify session
-    const targetShop = (req.headers['x-shopify-domain'] as string) || (req.query.shop as string);
-    let shopifySession: Session | undefined;
-    if (targetShop) {
-      shopifySession = await sessionStorage.findSessionByShop(targetShop);
-      if (shopifySession) {
-        console.log(`[MCP] Using Shopify session for: ${targetShop}`);
-      } else {
-        console.log(`[MCP] No Shopify session found for: ${targetShop}`);
-      }
+    // Session is attached by authMiddleware
+    const shopifySession = (req as any).shopifySession;
+    if (shopifySession) {
+      console.log(`[MCP] Using Shopify session for: ${shopifySession.shop}`);
     }
     
     // Handle different HTTP methods
