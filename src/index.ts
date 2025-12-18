@@ -201,7 +201,11 @@ async function startHttpServer() {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 20px;
+            }
+            .card-icon svg {
+                width: 20px;
+                height: 20px;
+                color: var(--p-color-action-primary);
             }
             .card-body { padding: 24px; }
             
@@ -480,7 +484,7 @@ async function startHttpServer() {
     </head>
     <body>
         <div class="page-header">
-            <h1>🛍️ Shopify MCP Server</h1>
+            <h1>Shopify MCP Server</h1>
             <p>Connect AI agents to your Shopify store and automate product management, order tracking, and more!</p>
             <div class="status-pill">
                 <span class="status-dot"></span>
@@ -492,7 +496,7 @@ async function startHttpServer() {
             <!-- YOUR CREDENTIALS -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-icon">🔑</div>
+                    <div class="card-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" /></svg></div>
                     <h2>Your Connection Credentials</h2>
                 </div>
                 <div class="card-body">
@@ -503,20 +507,20 @@ async function startHttpServer() {
                     <div class="credentials-grid">
                         <div class="credential-item">
                             <div class="credential-label">
-                                <span>📡</span> Server URL (MCP Endpoint)
+                                Server URL (MCP Endpoint)
                             </div>
                             <div class="credential-value">
                                 <input type="text" class="credential-input" value="${host}/mcp" readonly id="cred-url">
                                 <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-url')">Copy</button>
                             </div>
                             <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
-                                ✅ Recommended for n8n, Make, and most automation tools
+                                Recommended for n8n, Make, and most automation tools
                             </small>
                         </div>
                         
                         <div class="credential-item">
                             <div class="credential-label">
-                                <span>📡</span> Alternative URL (SSE Endpoint)
+                                Alternative URL (SSE Endpoint)
                             </div>
                             <div class="credential-value">
                                 <input type="text" class="credential-input" value="${host}/sse" readonly id="cred-sse">
@@ -529,21 +533,21 @@ async function startHttpServer() {
                         
                         <div class="credential-item">
                             <div class="credential-label">
-                                <span>🔐</span> Your Secret Token
+                                Your Secret Token
                             </div>
                             <div class="credential-value">
                                 <input type="password" class="credential-input" value="${token}" readonly id="cred-token">
                                 <button class="btn btn-secondary btn-sm" onclick="toggleToken()">Show</button>
                                 <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-token')">Copy</button>
                             </div>
-                            <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
-                                ⚠️ Keep this secret! Never share it publicly.
+                            <small style="color: #b98900; display: block; margin-top: 8px; font-weight: 500;">
+                                Keep this secret. Never share it publicly.
                             </small>
                         </div>
                         
                         <div class="credential-item">
                             <div class="credential-label">
-                                <span>🏪</span> Your Shop Domain
+                                Your Shop Domain
                             </div>
                             <div class="credential-value">
                                 <input type="text" class="credential-input" value="${shop || 'your-store.myshopify.com'}" readonly id="cred-shop">
@@ -556,7 +560,7 @@ async function startHttpServer() {
                     </div>
                     
                     <div class="info-box success" style="margin-top: 20px;">
-                        <div class="info-box-icon">💡</div>
+                        <div class="info-box-icon" style="background: #aee9d1; color: #0d5c2f; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                         <div class="info-box-content">
                             <div class="info-box-title">Quick Tip</div>
                             <div class="info-box-text">Click the "Copy" button next to each credential to copy it to your clipboard. You'll paste these values into your AI tool's settings.</div>
@@ -568,7 +572,7 @@ async function startHttpServer() {
             <!-- CHOOSE YOUR PLATFORM -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-icon">🚀</div>
+                    <div class="card-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" /></svg></div>
                     <h2>Connect Your AI Tool</h2>
                 </div>
                 <div class="card-body">
@@ -588,7 +592,7 @@ async function startHttpServer() {
                     <!-- n8n Instructions -->
                     <div id="tab-n8n" class="tab-content active">
                         <div class="info-box info">
-                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-icon" style="background: #a4e8f2; color: #0d5c5c; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">What is n8n?</div>
                                 <div class="info-box-text">n8n is a workflow automation tool that lets you connect different apps and services. With this integration, n8n can read your products, create new ones, and more!</div>
@@ -655,7 +659,7 @@ async function startHttpServer() {
                         </div>
                         
                         <div class="info-box warning" style="margin-top: 16px;">
-                            <div class="info-box-icon">⚠️</div>
+                            <div class="info-box-icon" style="background: #ffea8a; color: #8a6d00; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">!</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">Connection Issues?</div>
                                 <div class="info-box-text">If you see "Could not connect" error, try using the alternative SSE endpoint (${host}/sse) instead. Some n8n versions work better with SSE transport.</div>
@@ -666,7 +670,7 @@ async function startHttpServer() {
                     <!-- Make Instructions -->
                     <div id="tab-make" class="tab-content">
                         <div class="info-box info">
-                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-icon" style="background: #a4e8f2; color: #0d5c5c; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">What is Make?</div>
                                 <div class="info-box-text">Make (formerly Integromat) is a visual automation platform. While it doesn't have native MCP support yet, you can use HTTP modules to connect.</div>
@@ -722,7 +726,7 @@ async function startHttpServer() {
                     <!-- Cursor IDE Instructions -->
                     <div id="tab-cursor" class="tab-content">
                         <div class="info-box info">
-                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-icon" style="background: #a4e8f2; color: #0d5c5c; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">What is Cursor?</div>
                                 <div class="info-box-text">Cursor is an AI-powered code editor. You can connect it to this MCP server to let the AI manage your Shopify store while you code!</div>
@@ -780,7 +784,7 @@ async function startHttpServer() {
                     <!-- VS Code Instructions -->
                     <div id="tab-vscode" class="tab-content">
                         <div class="info-box info">
-                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-icon" style="background: #a4e8f2; color: #0d5c5c; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">VS Code + GitHub Copilot/Continue</div>
                                 <div class="info-box-text">Use VS Code with extensions like Continue or Cline to connect to MCP servers.</div>
@@ -843,7 +847,7 @@ async function startHttpServer() {
                     <!-- Claude Desktop Instructions -->
                     <div id="tab-claude" class="tab-content">
                         <div class="info-box info">
-                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-icon" style="background: #a4e8f2; color: #0d5c5c; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">Claude Desktop</div>
                                 <div class="info-box-text">Claude Desktop by Anthropic supports MCP natively. Connect it to manage your Shopify store with Claude!</div>
@@ -897,7 +901,7 @@ async function startHttpServer() {
                     <!-- Other Tools Instructions -->
                     <div id="tab-other" class="tab-content">
                         <div class="info-box info">
-                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-icon" style="background: #a4e8f2; color: #0d5c5c; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">Generic MCP Connection</div>
                                 <div class="info-box-text">Any tool that supports the Model Context Protocol (MCP) can connect using these credentials.</div>
@@ -932,7 +936,7 @@ async function startHttpServer() {
                         </div>
                         
                         <div class="info-box warning" style="margin-top: 20px;">
-                            <div class="info-box-icon">📧</div>
+                            <div class="info-box-icon" style="background: #a4e8f2; color: #0d5c5c; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">?</div>
                             <div class="info-box-content">
                                 <div class="info-box-title">Need Help?</div>
                                 <div class="info-box-text">Can't find instructions for your tool? Contact support or visit our documentation for the full API reference.</div>
@@ -945,7 +949,7 @@ async function startHttpServer() {
             <!-- AVAILABLE TOOLS -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-icon">🛠️</div>
+                    <div class="card-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" /></svg></div>
                     <h2>What Can Your AI Do?</h2>
                 </div>
                 <div class="card-body">
@@ -955,22 +959,22 @@ async function startHttpServer() {
                     
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
                         <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
-                            <div style="font-size: 24px; margin-bottom: 8px;">🔍</div>
+                            <div style="font-size: 20px; margin-bottom: 8px; color: var(--p-color-action-primary);"><svg style="width:24px;height:24px" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg></div>
                             <div style="font-weight: 600; margin-bottom: 4px;">Search Products</div>
                             <div style="font-size: 13px; color: var(--p-color-text-subdued);">Find products by name, search inventory, get product details</div>
                         </div>
                         <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
-                            <div style="font-size: 24px; margin-bottom: 8px;">➕</div>
+                            <div style="font-size: 20px; margin-bottom: 8px; color: var(--p-color-action-primary);"><svg style="width:24px;height:24px" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg></div>
                             <div style="font-weight: 600; margin-bottom: 4px;">Create Products</div>
                             <div style="font-size: 13px; color: var(--p-color-text-subdued);">Add new products with title, description, price, and status</div>
                         </div>
                         <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
-                            <div style="font-size: 24px; margin-bottom: 8px;">📦</div>
+                            <div style="font-size: 20px; margin-bottom: 8px; color: var(--p-color-action-primary);"><svg style="width:24px;height:24px" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg></div>
                             <div style="font-weight: 600; margin-bottom: 4px;">View Orders</div>
                             <div style="font-size: 13px; color: var(--p-color-text-subdued);">See recent orders, order details, and fulfillment status</div>
                         </div>
                         <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
-                            <div style="font-size: 24px; margin-bottom: 8px;">🔄</div>
+                            <div style="font-size: 20px; margin-bottom: 8px; color: var(--p-color-action-primary);"><svg style="width:24px;height:24px" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg></div>
                             <div style="font-weight: 600; margin-bottom: 4px;">Trigger Workflows</div>
                             <div style="font-size: 13px; color: var(--p-color-text-subdued);">Connect to n8n webhooks to trigger custom automations</div>
                         </div>
@@ -996,7 +1000,7 @@ async function startHttpServer() {
                 
                 const btn = el.parentElement.querySelector('button');
                 const original = btn.innerText;
-                btn.innerText = '✓ Copied!';
+                btn.innerText = 'Copied!';
                 btn.style.background = '#aee9d1';
                 setTimeout(() => {
                     btn.innerText = original;
