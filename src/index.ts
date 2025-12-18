@@ -88,233 +88,942 @@ async function startHttpServer() {
   // START OAUTH ROUTES
   app.get("/", (req, res) => {
     const shop = req.query.shop as string;
+    const host = process.env.HOST || 'https://your-server.com';
+    const token = process.env.MCP_SERVER_TOKEN || '';
+    const maskedToken = token ? `${token.substring(0, 4)}${'*'.repeat(Math.max(0, token.length - 8))}${token.substring(token.length - 4)}` : 'NOT_CONFIGURED';
     
-    // Polaris-inspired UI
-     const html = `
+    // Comprehensive Polaris-inspired Dashboard
+    const html = `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Shopify MCP Server</title>
+        <title>Shopify MCP Server - Connect Your AI Agent</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
             :root {
-                --p-color-bg-surface: #fff;
-                --p-color-bg-app: #f1f2f3;
+                --p-color-bg-surface: #ffffff;
+                --p-color-bg-app: #f6f6f7;
+                --p-color-bg-subdued: #fafbfb;
+                --p-color-bg-success: #aee9d1;
+                --p-color-bg-info: #a4e8f2;
+                --p-color-bg-warning: #ffea8a;
                 --p-color-text: #202223;
                 --p-color-text-subdued: #6d7175;
+                --p-color-text-success: #0d5c2f;
                 --p-color-border: #e1e3e5;
-                --p-color-action: #008060;
-                --p-border-radius: 8px;
-                --p-space-4: 16px;
-                --p-space-5: 20px;
+                --p-color-border-subdued: #f0f1f2;
+                --p-color-action-primary: #008060;
+                --p-color-action-primary-hover: #006e52;
+                --p-color-action-secondary: #5c5f62;
+                --p-border-radius-base: 8px;
+                --p-border-radius-lg: 12px;
+                --p-shadow-card: 0 0 0 1px rgba(63, 63, 68, 0.05), 0 1px 3px 0 rgba(63, 63, 68, 0.15);
+                --p-shadow-popover: 0 3px 6px -3px rgba(23, 24, 24, 0.08), 0 8px 20px -4px rgba(23, 24, 24, 0.12);
             }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
             body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-                background-color: var(--p-color-bg-app);
+                font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: var(--p-color-bg-app);
                 color: var(--p-color-text);
-                margin: 0;
-                padding: 20px;
-                display: flex;
-                justify-content: center;
+                line-height: 1.5;
+                min-height: 100vh;
+            }
+            .page-header {
+                background: linear-gradient(135deg, #008060 0%, #004c3f 100%);
+                color: white;
+                padding: 40px 20px;
+                text-align: center;
+            }
+            .page-header h1 {
+                font-size: 28px;
+                font-weight: 700;
+                margin-bottom: 8px;
+            }
+            .page-header p {
+                opacity: 0.9;
+                font-size: 16px;
+                max-width: 600px;
+                margin: 0 auto;
+            }
+            .status-pill {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: rgba(255,255,255,0.2);
+                padding: 6px 12px;
+                border-radius: 20px;
+                font-size: 13px;
+                margin-top: 16px;
+            }
+            .status-dot {
+                width: 8px;
+                height: 8px;
+                background: #aee9d1;
+                border-radius: 50%;
+                animation: pulse 2s infinite;
+            }
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
             }
             .container {
-                max-width: 900px;
-                width: 100%;
-            }
-            .header {
-                margin-bottom: 20px;
-                display: flex;
-                align-items: center;
-                gap: 12px;
-            }
-            .header h1 {
-                font-size: 24px;
-                font-weight: 600;
-                margin: 0;
-            }
-            .badge {
-                background: #cbf4c9;
-                color: #0e4e0d;
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-size: 13px;
-                font-weight: 500;
+                max-width: 1000px;
+                margin: 0 auto;
+                padding: 24px 20px 60px;
             }
             .card {
                 background: var(--p-color-bg-surface);
                 border: 1px solid var(--p-color-border);
-                border-radius: var(--p-border-radius);
-                padding: var(--p-space-5);
-                margin-bottom: var(--p-space-5);
-                box-shadow: 0 0 0 1px rgba(63, 63, 68, 0.05), 0 1px 3px 0 rgba(63, 63, 68, 0.15);
+                border-radius: var(--p-border-radius-lg);
+                box-shadow: var(--p-shadow-card);
+                margin-bottom: 20px;
+                overflow: hidden;
             }
-            .card-title {
-                font-size: 16px;
-                font-weight: 600;
-                margin-top: 0;
-                margin-bottom: 16px;
-            }
-            .field-group {
-                margin-bottom: 16px;
-            }
-            .label {
-                display: block;
-                font-size: 13px;
-                margin-bottom: 4px;
-                color: var(--p-color-text-subdued);
-            }
-            .input-wrapper {
+            .card-header {
+                padding: 20px 24px;
+                border-bottom: 1px solid var(--p-color-border-subdued);
                 display: flex;
-                gap: 8px;
+                align-items: center;
+                gap: 12px;
             }
-            .code-input {
+            .card-header h2 {
+                font-size: 18px;
+                font-weight: 600;
                 flex: 1;
-                font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
-                font-size: 14px;
-                padding: 8px 12px;
+            }
+            .card-icon {
+                width: 40px;
+                height: 40px;
+                background: var(--p-color-bg-subdued);
+                border-radius: 10px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+            }
+            .card-body { padding: 24px; }
+            
+            /* Credentials Section */
+            .credentials-grid {
+                display: grid;
+                gap: 16px;
+            }
+            .credential-item {
+                background: var(--p-color-bg-subdued);
                 border: 1px solid var(--p-color-border);
-                border-radius: 4px;
-                background: #fafbfc;
-                color: #202223;
+                border-radius: var(--p-border-radius-base);
+                padding: 16px;
             }
-            .btn {
-                cursor: pointer;
-                background: white;
-                border: 1px solid var(--p-color-border);
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-size: 14px;
-                font-weight: 500;
-                color: var(--p-color-text);
-                transition: background 0.2s;
-            }
-            .btn:hover {
-                background: #f6f6f7;
-            }
-            .btn-primary {
-                background: var(--p-color-action);
-                color: white;
-                border: none;
-            }
-            .btn-primary:hover {
-                background: #006e52;
-            }
-            .steps {
-                counter-reset: step;
-                list-style: none;
-                padding: 0;
-            }
-            .step {
-                position: relative;
-                padding-left: 40px;
-                margin-bottom: 16px;
-            }
-            .step::before {
-                counter-increment: step;
-                content: counter(step);
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 24px;
-                height: 24px;
-                background: var(--p-color-bg-app);
-                border: 1px solid var(--p-color-border);
-                border-radius: 50%;
-                text-align: center;
-                line-height: 24px;
+            .credential-label {
+                display: flex;
+                align-items: center;
+                gap: 8px;
                 font-size: 12px;
                 font-weight: 600;
-            }
-            .footer-link {
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
                 color: var(--p-color-text-subdued);
-                text-decoration: none;
-                font-size: 13px;
-                display: inline-block;
-                margin-top: 20px;
+                margin-bottom: 8px;
             }
-            .footer-link:hover {
-                text-decoration: underline;
+            .credential-value {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .credential-input {
+                flex: 1;
+                font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+                font-size: 14px;
+                padding: 10px 12px;
+                border: 1px solid var(--p-color-border);
+                border-radius: 6px;
+                background: white;
+                color: var(--p-color-text);
+            }
+            .credential-input:focus {
+                outline: none;
+                border-color: var(--p-color-action-primary);
+                box-shadow: 0 0 0 2px rgba(0, 128, 96, 0.2);
+            }
+            .btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                padding: 10px 16px;
+                font-size: 14px;
+                font-weight: 500;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                border: none;
+            }
+            .btn-primary {
+                background: var(--p-color-action-primary);
+                color: white;
+            }
+            .btn-primary:hover { background: var(--p-color-action-primary-hover); }
+            .btn-secondary {
+                background: white;
+                color: var(--p-color-text);
+                border: 1px solid var(--p-color-border);
+            }
+            .btn-secondary:hover { background: var(--p-color-bg-subdued); }
+            .btn-sm { padding: 8px 12px; font-size: 13px; }
+            
+            /* Tabs */
+            .tabs {
+                display: flex;
+                gap: 4px;
+                padding: 4px;
+                background: var(--p-color-bg-subdued);
+                border-radius: var(--p-border-radius-base);
+                margin-bottom: 20px;
+                overflow-x: auto;
+            }
+            .tab {
+                flex: 1;
+                min-width: 120px;
+                padding: 10px 16px;
+                font-size: 14px;
+                font-weight: 500;
+                background: transparent;
+                border: none;
+                border-radius: 6px;
+                cursor: pointer;
+                color: var(--p-color-text-subdued);
+                transition: all 0.15s ease;
+                white-space: nowrap;
+            }
+            .tab:hover { color: var(--p-color-text); }
+            .tab.active {
+                background: white;
+                color: var(--p-color-text);
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
+            .tab-content { display: none; }
+            .tab-content.active { display: block; }
+            
+            /* Tutorial Steps */
+            .tutorial-steps {
+                counter-reset: step;
+            }
+            .tutorial-step {
+                display: flex;
+                gap: 16px;
+                padding: 20px 0;
+                border-bottom: 1px solid var(--p-color-border-subdued);
+            }
+            .tutorial-step:last-child { border-bottom: none; }
+            .step-number {
+                flex-shrink: 0;
+                width: 32px;
+                height: 32px;
+                background: var(--p-color-action-primary);
+                color: white;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                font-weight: 600;
+            }
+            .step-content { flex: 1; }
+            .step-title {
+                font-size: 15px;
+                font-weight: 600;
+                margin-bottom: 6px;
+            }
+            .step-description {
+                font-size: 14px;
+                color: var(--p-color-text-subdued);
+                margin-bottom: 12px;
+            }
+            .step-code {
+                background: #1e1e1e;
+                color: #d4d4d4;
+                padding: 12px 16px;
+                border-radius: 6px;
+                font-family: 'SF Mono', 'Consolas', monospace;
+                font-size: 13px;
+                overflow-x: auto;
+                position: relative;
+            }
+            .step-code .copy-btn {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                background: rgba(255,255,255,0.1);
+                border: none;
+                color: #999;
+                padding: 4px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 11px;
+            }
+            .step-code .copy-btn:hover { background: rgba(255,255,255,0.2); color: white; }
+            .step-image {
+                max-width: 100%;
+                border: 1px solid var(--p-color-border);
+                border-radius: 8px;
+                margin-top: 12px;
+            }
+            
+            /* Info Boxes */
+            .info-box {
+                display: flex;
+                gap: 12px;
+                padding: 16px;
+                border-radius: var(--p-border-radius-base);
+                margin: 16px 0;
+            }
+            .info-box.success {
+                background: #f1f8f5;
+                border: 1px solid #aee9d1;
+            }
+            .info-box.info {
+                background: #f0f9fa;
+                border: 1px solid #a4e8f2;
+            }
+            .info-box.warning {
+                background: #fffbeb;
+                border: 1px solid #ffea8a;
+            }
+            .info-box-icon { font-size: 20px; }
+            .info-box-content { flex: 1; }
+            .info-box-title {
+                font-weight: 600;
+                font-size: 14px;
+                margin-bottom: 4px;
+            }
+            .info-box-text {
+                font-size: 13px;
+                color: var(--p-color-text-subdued);
+            }
+            
+            /* Platform Cards */
+            .platform-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                gap: 16px;
+                margin-bottom: 20px;
+            }
+            .platform-card {
+                background: var(--p-color-bg-surface);
+                border: 1px solid var(--p-color-border);
+                border-radius: var(--p-border-radius-base);
+                padding: 20px;
+                cursor: pointer;
+                transition: all 0.15s ease;
+            }
+            .platform-card:hover {
+                border-color: var(--p-color-action-primary);
+                box-shadow: 0 0 0 1px var(--p-color-action-primary);
+            }
+            .platform-card.selected {
+                border-color: var(--p-color-action-primary);
+                background: #f1f8f5;
+            }
+            .platform-header {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 8px;
+            }
+            .platform-logo {
+                width: 40px;
+                height: 40px;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 24px;
+            }
+            .platform-name {
+                font-size: 16px;
+                font-weight: 600;
+            }
+            .platform-type {
+                font-size: 12px;
+                color: var(--p-color-text-subdued);
+            }
+            .platform-desc {
+                font-size: 13px;
+                color: var(--p-color-text-subdued);
+            }
+            
+            /* Footer */
+            .footer {
+                text-align: center;
+                padding: 20px;
+                color: var(--p-color-text-subdued);
+                font-size: 13px;
+            }
+            .footer a {
+                color: var(--p-color-action-primary);
+                text-decoration: none;
+            }
+            .footer a:hover { text-decoration: underline; }
+            
+            /* Responsive */
+            @media (max-width: 640px) {
+                .page-header { padding: 24px 16px; }
+                .page-header h1 { font-size: 22px; }
+                .container { padding: 16px; }
+                .card-header, .card-body { padding: 16px; }
+                .tabs { flex-wrap: wrap; }
+                .tab { min-width: auto; flex: none; }
             }
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1>MCP Server Connection</h1>
-                <span class="badge">Active</span>
-            </div>
-
-            <div class="card">
-                <h2 class="card-title">🔌 Connect your Agent</h2>
-                <p style="margin-bottom: 20px; color: #5c5f62;">Use these credentials to connect <strong>n8n</strong> or any <strong>MCP Client</strong> to this store.</p>
-
-                <div class="field-group">
-                    <label class="label">MCP Endpoint (Recommended for n8n)</label>
-                    <div class="input-wrapper">
-                        <input type="text" class="code-input" value="${process.env.HOST}/mcp" readonly id="mcp-url">
-                        <button class="btn" onclick="copy('mcp-url')">Copy</button>
-                    </div>
-                    <small style="color: #6d7175;">Uses Streamable HTTP transport - works best with modern MCP clients</small>
-                </div>
-
-                <div class="field-group">
-                    <label class="label">SSE Endpoint (Legacy)</label>
-                    <div class="input-wrapper">
-                        <input type="text" class="code-input" value="${process.env.HOST}/sse" readonly id="url">
-                        <button class="btn" onclick="copy('url')">Copy</button>
-                    </div>
-                    <small style="color: #6d7175;">For clients that only support SSE transport</small>
-                </div>
-
-                <div class="field-group">
-                    <label class="label">Authorization Header</label>
-                    <div class="input-wrapper">
-                        <input type="text" class="code-input" value="Bearer ${process.env.MCP_SERVER_TOKEN || 'See Server Env'}" readonly id="auth">
-                        <button class="btn" onclick="copy('auth')">Copy</button>
-                    </div>
-                </div>
-
-                <div class="field-group">
-                    <label class="label">Shop Header (X-Shopify-Domain)</label>
-                    <div class="input-wrapper">
-                        <input type="text" class="code-input" value="${shop || 'missing-shop-param'}" readonly id="shop">
-                        <button class="btn" onclick="copy('shop')">Copy</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2 class="card-title">📝 Setup Instructions</h2>
-                <ol class="steps">
-                    <li class="step">Open your n8n workflow or MCP Client configuration.</li>
-                    <li class="step">For <strong>n8n</strong>: Try the <strong>MCP Endpoint</strong> first (uses Streamable HTTP). If that doesn't work, use the <strong>SSE Endpoint</strong>.</li>
-                    <li class="step">Paste the URL from above.</li>
-                    <li class="step">Add two headers:
-                        <ul style="margin-top: 8px; color: #5c5f62;">
-                            <li><code>Authorization</code>: Paste the Bearer token.</li>
-                            <li><code>X-Shopify-Domain</code>: Paste the Shop domain.</li>
-                        </ul>
-                    </li>
-                    <li class="step">Save and Connect! Your agent now has access to Products and Orders.</li>
-                </ol>
-            </div>
-            
-            <div style="text-align: center;">
-                <a href="/debug" target="_blank" class="footer-link">View System Health & Debug Info →</a>
+        <div class="page-header">
+            <h1>🛍️ Shopify MCP Server</h1>
+            <p>Connect AI agents to your Shopify store and automate product management, order tracking, and more!</p>
+            <div class="status-pill">
+                <span class="status-dot"></span>
+                Server Active & Ready
             </div>
         </div>
-
+        
+        <div class="container">
+            <!-- YOUR CREDENTIALS -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">🔑</div>
+                    <h2>Your Connection Credentials</h2>
+                </div>
+                <div class="card-body">
+                    <p style="color: var(--p-color-text-subdued); margin-bottom: 20px;">
+                        These are your unique credentials. You'll need them to connect any AI agent or automation tool to your store.
+                    </p>
+                    
+                    <div class="credentials-grid">
+                        <div class="credential-item">
+                            <div class="credential-label">
+                                <span>📡</span> Server URL (MCP Endpoint)
+                            </div>
+                            <div class="credential-value">
+                                <input type="text" class="credential-input" value="${host}/mcp" readonly id="cred-url">
+                                <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-url')">Copy</button>
+                            </div>
+                            <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
+                                ✅ Recommended for n8n, Make, and most automation tools
+                            </small>
+                        </div>
+                        
+                        <div class="credential-item">
+                            <div class="credential-label">
+                                <span>📡</span> Alternative URL (SSE Endpoint)
+                            </div>
+                            <div class="credential-value">
+                                <input type="text" class="credential-input" value="${host}/sse" readonly id="cred-sse">
+                                <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-sse')">Copy</button>
+                            </div>
+                            <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
+                                Use this if the main URL doesn't work with your tool
+                            </small>
+                        </div>
+                        
+                        <div class="credential-item">
+                            <div class="credential-label">
+                                <span>🔐</span> Your Secret Token
+                            </div>
+                            <div class="credential-value">
+                                <input type="password" class="credential-input" value="${token}" readonly id="cred-token">
+                                <button class="btn btn-secondary btn-sm" onclick="toggleToken()">Show</button>
+                                <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-token')">Copy</button>
+                            </div>
+                            <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
+                                ⚠️ Keep this secret! Never share it publicly.
+                            </small>
+                        </div>
+                        
+                        <div class="credential-item">
+                            <div class="credential-label">
+                                <span>🏪</span> Your Shop Domain
+                            </div>
+                            <div class="credential-value">
+                                <input type="text" class="credential-input" value="${shop || 'your-store.myshopify.com'}" readonly id="cred-shop">
+                                <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-shop')">Copy</button>
+                            </div>
+                            <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
+                                This identifies which Shopify store to connect to
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="info-box success" style="margin-top: 20px;">
+                        <div class="info-box-icon">💡</div>
+                        <div class="info-box-content">
+                            <div class="info-box-title">Quick Tip</div>
+                            <div class="info-box-text">Click the "Copy" button next to each credential to copy it to your clipboard. You'll paste these values into your AI tool's settings.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- CHOOSE YOUR PLATFORM -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">🚀</div>
+                    <h2>Connect Your AI Tool</h2>
+                </div>
+                <div class="card-body">
+                    <p style="color: var(--p-color-text-subdued); margin-bottom: 20px;">
+                        Select your platform below to see step-by-step instructions:
+                    </p>
+                    
+                    <div class="tabs">
+                        <button class="tab active" onclick="showTab('n8n')">n8n</button>
+                        <button class="tab" onclick="showTab('make')">Make (Zapier)</button>
+                        <button class="tab" onclick="showTab('cursor')">Cursor IDE</button>
+                        <button class="tab" onclick="showTab('vscode')">VS Code</button>
+                        <button class="tab" onclick="showTab('claude')">Claude Desktop</button>
+                        <button class="tab" onclick="showTab('other')">Other Tools</button>
+                    </div>
+                    
+                    <!-- n8n Instructions -->
+                    <div id="tab-n8n" class="tab-content active">
+                        <div class="info-box info">
+                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">What is n8n?</div>
+                                <div class="info-box-text">n8n is a workflow automation tool that lets you connect different apps and services. With this integration, n8n can read your products, create new ones, and more!</div>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-steps">
+                            <div class="tutorial-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <div class="step-title">Open n8n and Create a New Workflow</div>
+                                    <div class="step-description">Log into your n8n instance and click the "+" button to create a new workflow.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <div class="step-title">Add the "AI Agent" Node</div>
+                                    <div class="step-description">Click the "+" button in the workflow, search for "AI Agent", and add it to your workflow.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <div class="step-title">Add the "MCP Client" Tool</div>
+                                    <div class="step-description">In the AI Agent settings, click "Add Tool" and select "MCP Client Tool".</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <div class="step-title">Configure the MCP Client</div>
+                                    <div class="step-description">Enter these values in the MCP Client settings:</div>
+                                    <div class="step-code">
+                                        <div><strong style="color: #9cdcfe;">SSE Endpoint:</strong> <span style="color: #ce9178;">${host}/sse</span></div>
+                                        <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Authentication:</strong> <span style="color: #ce9178;">Bearer Token</span></div>
+                                        <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Token:</strong> <span style="color: #ce9178;">${maskedToken}</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">5</div>
+                                <div class="step-content">
+                                    <div class="step-title">Add Custom Headers</div>
+                                    <div class="step-description">In the MCP Client, add these custom headers:</div>
+                                    <div class="step-code">
+                                        <div><strong style="color: #9cdcfe;">Header Name:</strong> <span style="color: #ce9178;">X-Shopify-Domain</span></div>
+                                        <div><strong style="color: #9cdcfe;">Header Value:</strong> <span style="color: #ce9178;">${shop || 'your-store.myshopify.com'}</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">6</div>
+                                <div class="step-content">
+                                    <div class="step-title">Test the Connection</div>
+                                    <div class="step-description">Click "Test" or run the workflow. You should see the Shopify tools appear (like "shopify_search_products").</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="info-box warning" style="margin-top: 16px;">
+                            <div class="info-box-icon">⚠️</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">Connection Issues?</div>
+                                <div class="info-box-text">If you see "Could not connect" error, try using the alternative SSE endpoint (${host}/sse) instead. Some n8n versions work better with SSE transport.</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Make Instructions -->
+                    <div id="tab-make" class="tab-content">
+                        <div class="info-box info">
+                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">What is Make?</div>
+                                <div class="info-box-text">Make (formerly Integromat) is a visual automation platform. While it doesn't have native MCP support yet, you can use HTTP modules to connect.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-steps">
+                            <div class="tutorial-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <div class="step-title">Create a New Scenario</div>
+                                    <div class="step-description">Log into Make.com and create a new scenario.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <div class="step-title">Add HTTP Module</div>
+                                    <div class="step-description">Add the "HTTP" → "Make a request" module.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <div class="step-title">Configure the Request</div>
+                                    <div class="step-description">Use these settings:</div>
+                                    <div class="step-code">
+                                        <div><strong style="color: #9cdcfe;">URL:</strong> <span style="color: #ce9178;">${host}/mcp</span></div>
+                                        <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Method:</strong> <span style="color: #ce9178;">POST</span></div>
+                                        <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Headers:</strong></div>
+                                        <div style="margin-left: 16px;">Authorization: Bearer ${maskedToken}</div>
+                                        <div style="margin-left: 16px;">X-Shopify-Domain: ${shop || 'your-store.myshopify.com'}</div>
+                                        <div style="margin-left: 16px;">Content-Type: application/json</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <div class="step-title">Send MCP Commands</div>
+                                    <div class="step-description">In the request body, send MCP protocol messages. For example, to list tools:</div>
+                                    <div class="step-code">
+                                        <pre style="margin: 0;">{"jsonrpc": "2.0", "method": "tools/list", "id": 1}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Cursor IDE Instructions -->
+                    <div id="tab-cursor" class="tab-content">
+                        <div class="info-box info">
+                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">What is Cursor?</div>
+                                <div class="info-box-text">Cursor is an AI-powered code editor. You can connect it to this MCP server to let the AI manage your Shopify store while you code!</div>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-steps">
+                            <div class="tutorial-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <div class="step-title">Open Cursor Settings</div>
+                                    <div class="step-description">Open Cursor and go to Settings → Features → MCP Servers</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <div class="step-title">Add New MCP Server</div>
+                                    <div class="step-description">Click "Add MCP Server" or edit your mcp.json file directly:</div>
+                                    <div class="step-code">
+                                        <pre style="margin: 0;">{
+  "mcpServers": {
+    "shopify": {
+      "url": "${host}/sse",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN_HERE",
+        "X-Shopify-Domain": "${shop || 'your-store.myshopify.com'}"
+      }
+    }
+  }
+}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <div class="step-title">Replace YOUR_TOKEN_HERE</div>
+                                    <div class="step-description">Copy your secret token from above and replace "YOUR_TOKEN_HERE" in the config.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <div class="step-title">Restart Cursor</div>
+                                    <div class="step-description">Close and reopen Cursor. Now you can ask the AI to search products, create products, and more!</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- VS Code Instructions -->
+                    <div id="tab-vscode" class="tab-content">
+                        <div class="info-box info">
+                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">VS Code + GitHub Copilot/Continue</div>
+                                <div class="info-box-text">Use VS Code with extensions like Continue or Cline to connect to MCP servers.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-steps">
+                            <div class="tutorial-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <div class="step-title">Install Continue Extension</div>
+                                    <div class="step-description">Open VS Code Extensions (Ctrl+Shift+X) and search for "Continue". Install it.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <div class="step-title">Open Continue Config</div>
+                                    <div class="step-description">Click the Continue icon in the sidebar, then click the gear icon to open config.json</div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <div class="step-title">Add MCP Server Configuration</div>
+                                    <div class="step-description">Add this to your config.json:</div>
+                                    <div class="step-code">
+                                        <pre style="margin: 0;">{
+  "experimental": {
+    "mcpServers": {
+      "shopify": {
+        "transport": {
+          "type": "sse",
+          "url": "${host}/sse",
+          "headers": {
+            "Authorization": "Bearer YOUR_TOKEN_HERE",
+            "X-Shopify-Domain": "${shop || 'your-store.myshopify.com'}"
+          }
+        }
+      }
+    }
+  }
+}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">4</div>
+                                <div class="step-content">
+                                    <div class="step-title">Reload VS Code</div>
+                                    <div class="step-description">Reload the window (Ctrl+Shift+P → "Reload Window"). The Shopify tools should now be available!</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Claude Desktop Instructions -->
+                    <div id="tab-claude" class="tab-content">
+                        <div class="info-box info">
+                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">Claude Desktop</div>
+                                <div class="info-box-text">Claude Desktop by Anthropic supports MCP natively. Connect it to manage your Shopify store with Claude!</div>
+                            </div>
+                        </div>
+                        
+                        <div class="tutorial-steps">
+                            <div class="tutorial-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <div class="step-title">Open Claude Desktop Settings</div>
+                                    <div class="step-description">Open Claude Desktop and find the MCP configuration file:</div>
+                                    <div class="step-code">
+                                        <div><strong style="color: #9cdcfe;">Mac:</strong> <span style="color: #ce9178;">~/Library/Application Support/Claude/claude_desktop_config.json</span></div>
+                                        <div style="margin-top: 8px;"><strong style="color: #9cdcfe;">Windows:</strong> <span style="color: #ce9178;">%APPDATA%\\Claude\\claude_desktop_config.json</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <div class="step-title">Add Server Configuration</div>
+                                    <div class="step-description">Add this to your config file:</div>
+                                    <div class="step-code">
+                                        <pre style="margin: 0;">{
+  "mcpServers": {
+    "shopify": {
+      "url": "${host}/sse",
+      "headers": {
+        "Authorization": "Bearer YOUR_TOKEN_HERE",
+        "X-Shopify-Domain": "${shop || 'your-store.myshopify.com'}"
+      }
+    }
+  }
+}</pre>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="tutorial-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <div class="step-title">Restart Claude Desktop</div>
+                                    <div class="step-description">Close and reopen Claude Desktop. You should see a plug icon indicating MCP is connected!</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Other Tools Instructions -->
+                    <div id="tab-other" class="tab-content">
+                        <div class="info-box info">
+                            <div class="info-box-icon">ℹ️</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">Generic MCP Connection</div>
+                                <div class="info-box-text">Any tool that supports the Model Context Protocol (MCP) can connect using these credentials.</div>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 20px;">
+                            <h3 style="font-size: 16px; margin-bottom: 16px;">Connection Details</h3>
+                            
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr style="background: var(--p-color-bg-subdued);">
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border); font-weight: 600;">Setting</td>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border); font-weight: 600;">Value</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border);">MCP Endpoint (HTTP)</td>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border); font-family: monospace;">${host}/mcp</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border);">SSE Endpoint</td>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border); font-family: monospace;">${host}/sse</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border);">Authorization Header</td>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border); font-family: monospace;">Bearer YOUR_TOKEN</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border);">Shop Header</td>
+                                    <td style="padding: 12px; border: 1px solid var(--p-color-border); font-family: monospace;">X-Shopify-Domain: ${shop || 'your-store.myshopify.com'}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <div class="info-box warning" style="margin-top: 20px;">
+                            <div class="info-box-icon">📧</div>
+                            <div class="info-box-content">
+                                <div class="info-box-title">Need Help?</div>
+                                <div class="info-box-text">Can't find instructions for your tool? Contact support or visit our documentation for the full API reference.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- AVAILABLE TOOLS -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon">🛠️</div>
+                    <h2>What Can Your AI Do?</h2>
+                </div>
+                <div class="card-body">
+                    <p style="color: var(--p-color-text-subdued); margin-bottom: 20px;">
+                        Once connected, your AI agent can use these tools:
+                    </p>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                        <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
+                            <div style="font-size: 24px; margin-bottom: 8px;">🔍</div>
+                            <div style="font-weight: 600; margin-bottom: 4px;">Search Products</div>
+                            <div style="font-size: 13px; color: var(--p-color-text-subdued);">Find products by name, search inventory, get product details</div>
+                        </div>
+                        <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
+                            <div style="font-size: 24px; margin-bottom: 8px;">➕</div>
+                            <div style="font-weight: 600; margin-bottom: 4px;">Create Products</div>
+                            <div style="font-size: 13px; color: var(--p-color-text-subdued);">Add new products with title, description, price, and status</div>
+                        </div>
+                        <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
+                            <div style="font-size: 24px; margin-bottom: 8px;">📦</div>
+                            <div style="font-weight: 600; margin-bottom: 4px;">View Orders</div>
+                            <div style="font-size: 13px; color: var(--p-color-text-subdued);">See recent orders, order details, and fulfillment status</div>
+                        </div>
+                        <div style="background: var(--p-color-bg-subdued); padding: 16px; border-radius: 8px;">
+                            <div style="font-size: 24px; margin-bottom: 8px;">🔄</div>
+                            <div style="font-weight: 600; margin-bottom: 4px;">Trigger Workflows</div>
+                            <div style="font-size: 13px; color: var(--p-color-text-subdued);">Connect to n8n webhooks to trigger custom automations</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <a href="/debug">View System Status</a> · 
+                <a href="/health">Health Check</a>
+                <p style="margin-top: 12px;">Shopify MCP Server v1.0 • Powered by Model Context Protocol</p>
+            </div>
+        </div>
+        
         <script>
-            function copy(id) {
+            function copyCredential(id) {
                 const el = document.getElementById(id);
+                const originalType = el.type;
+                el.type = 'text';
                 el.select();
                 navigator.clipboard.writeText(el.value);
+                el.type = originalType;
                 
-                const btn = el.nextElementSibling;
+                const btn = el.parentElement.querySelector('button');
                 const original = btn.innerText;
-                btn.innerText = 'Copied!';
-                setTimeout(() => btn.innerText = original, 2000);
+                btn.innerText = '✓ Copied!';
+                btn.style.background = '#aee9d1';
+                setTimeout(() => {
+                    btn.innerText = original;
+                    btn.style.background = '';
+                }, 2000);
+            }
+            
+            function toggleToken() {
+                const el = document.getElementById('cred-token');
+                const btn = el.parentElement.querySelectorAll('button')[0];
+                if (el.type === 'password') {
+                    el.type = 'text';
+                    btn.innerText = 'Hide';
+                } else {
+                    el.type = 'password';
+                    btn.innerText = 'Show';
+                }
+            }
+            
+            function showTab(tabId) {
+                // Hide all tabs
+                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                
+                // Show selected tab
+                document.getElementById('tab-' + tabId).classList.add('active');
+                event.target.classList.add('active');
             }
         </script>
     </body>
