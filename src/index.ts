@@ -97,7 +97,15 @@ async function startHttpServer() {
   });
 
   app.use(cors());
-  app.use(express.json());
+  
+  // JSON body parser - EXCLUDE /mcp and /sse endpoints
+  // The MCP transports need to read raw body stream directly
+  app.use((req, res, next) => {
+    if (req.path === '/mcp' || req.path === '/sse' || req.path === '/message') {
+      return next(); // Skip JSON parsing for MCP endpoints
+    }
+    express.json()(req, res, next);
+  });
 
   // Store active transports by SessionID
   const transports = new Map<string, SSEServerTransport>();
