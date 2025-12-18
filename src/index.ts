@@ -1095,7 +1095,7 @@ async function startHttpServer() {
         </style>
     </head>
     <body>
-        <h1>🚀 Shopify MCP Server Status</h1>
+        <h1>Shopify MCP Server Status</h1>
         
         <div class="card">
             <h2>System Health</h2>
@@ -1129,6 +1129,43 @@ async function startHttpServer() {
     </html>
     `;
     res.send(html);
+  });
+
+  // MCP Test Endpoint - Simple test for verifying MCP connectivity
+  app.post("/mcp-test", authMiddleware, async (req, res) => {
+    console.log("=== MCP-TEST REQUEST ===");
+    console.log("[MCP-TEST] Headers:", JSON.stringify({
+      'authorization': req.headers['authorization'] ? 'Bearer *** (present)' : 'MISSING',
+      'x-shopify-domain': req.headers['x-shopify-domain'] || 'MISSING',
+      'content-type': req.headers['content-type'],
+    }, null, 2));
+    console.log("[MCP-TEST] Body:", JSON.stringify(req.body, null, 2));
+    console.log("========================");
+
+    const targetShop = req.headers['x-shopify-domain'] as string;
+    let shopifySession: Session | undefined;
+    
+    if (targetShop) {
+      shopifySession = await sessionStorage.findSessionByShop(targetShop);
+    }
+
+    res.json({
+      success: true,
+      message: "MCP server is reachable and authentication passed!",
+      details: {
+        authValid: true,
+        shopDomain: targetShop || "not provided",
+        shopifySessionFound: !!shopifySession,
+        serverTime: new Date().toISOString(),
+        mcpEndpoint: `${process.env.HOST}/mcp`,
+        sseEndpoint: `${process.env.HOST}/sse`,
+      },
+      nextSteps: !shopifySession ? [
+        `Your shop (${targetShop}) has not completed OAuth. Visit: ${process.env.HOST}/auth?shop=${targetShop}`
+      ] : [
+        "Your connection is ready! Configure your MCP client to use the endpoints above."
+      ]
+    });
   });
 
   // SSE Endpoint (Legacy - still supported for backward compatibility)
