@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -28,6 +29,9 @@ async function startStdioServer() {
 async function startHttpServer() {
   const app = express();
   const port = process.env.PORT || 3000;
+  
+  // Essential middleware for OAuth cookie handling
+  app.use(cookieParser());
   
   // Shopify API Context
   // Users must set these if they want to use OAuth
