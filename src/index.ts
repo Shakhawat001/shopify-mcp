@@ -1203,7 +1203,23 @@ async function startHttpServer() {
   // NEW: Streamable HTTP Transport Endpoint (Recommended by MCP spec)
   // This is the modern transport that n8n and other clients prefer
   // ============================================================
-  const mcpSessions = new Map<string, { server: ReturnType<typeof createShopifyServer>, transport: InstanceType<typeof StreamableHTTPServerTransport> }>();
+  const mcpSessions = new Map<string, { 
+    server: ReturnType<typeof createShopifyServer>, 
+    transport: InstanceType<typeof StreamableHTTPServerTransport>,
+    lastAccess: number 
+  }>();
+  
+  // Session cleanup interval (every 5 minutes, expire sessions after 30 minutes)
+  const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [sessionId, session] of mcpSessions.entries()) {
+      if (now - session.lastAccess > SESSION_TIMEOUT_MS) {
+        console.log(`[MCP] Session expired: ${sessionId}`);
+        mcpSessions.delete(sessionId);
+      }
+    }
+  }, 5 * 60 * 1000); // Check every 5 minutes
   
   app.all("/mcp", authMiddleware, async (req, res) => {
     console.log("=== NEW MCP STREAMABLE CONNECTION ===");
@@ -1213,16 +1229,23 @@ async function startHttpServer() {
       'user-agent': req.headers['user-agent'],
       'accept': req.headers['accept'],
       'content-type': req.headers['content-type'],
+      'authorization': req.headers['authorization'] ? 'Bearer ***' : 'MISSING',
       'x-shopify-domain': req.headers['x-shopify-domain'],
       'mcp-session-id': req.headers['mcp-session-id'],
     }, null, 2));
+    
+    // Log request body for debugging
+    if (req.body) {
+      console.log("[MCP] Body:", JSON.stringify(req.body, null, 2));
+    }
     console.log("=====================================");
     
-    // Headers for compatibility
+    // Headers for reverse proxy compatibility
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
     
-    // Get or create session
+    // Get session ID from header
     const sessionIdHeader = req.headers['mcp-session-id'] as string | undefined;
     
     // Determine Shopify session
@@ -1232,6 +1255,8 @@ async function startHttpServer() {
       shopifySession = await sessionStorage.findSessionByShop(targetShop);
       if (shopifySession) {
         console.log(`[MCP] Using Shopify session for: ${targetShop}`);
+      } else {
+        console.log(`[MCP] No Shopify session found for: ${targetShop}`);
       }
     }
     
@@ -1239,13 +1264,21 @@ async function startHttpServer() {
     if (req.method === 'POST') {
       // Check for existing session
       if (sessionIdHeader && mcpSessions.has(sessionIdHeader)) {
+        console.log(`[MCP] Reusing existing session: ${sessionIdHeader}`);
         const session = mcpSessions.get(sessionIdHeader)!;
+        session.lastAccess = Date.now(); // Update last access time
+        
         try {
           await session.transport.handleRequest(req, res);
+          console.log(`[MCP] Request handled for session: ${sessionIdHeader}`);
         } catch (error: any) {
-          console.error(`[MCP] Request error:`, error.message);
+          console.error(`[MCP] Request error for session ${sessionIdHeader}:`, error.message);
           if (!res.headersSent) {
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ 
+              jsonrpc: "2.0",
+              error: { code: -32603, message: error.message },
+              id: null
+            });
           }
         }
         return;
@@ -1260,31 +1293,59 @@ async function startHttpServer() {
         sessionIdGenerator: () => newSessionId,
       });
       
-      mcpSessions.set(newSessionId, { server, transport });
-      
-      // Cleanup on close
-      res.on('close', () => {
-        console.log(`[MCP] Connection closed for session: ${newSessionId}`);
-        mcpSessions.delete(newSessionId);
+      // Store session with timestamp
+      mcpSessions.set(newSessionId, { 
+        server, 
+        transport, 
+        lastAccess: Date.now() 
       });
+      
+      console.log(`[MCP] Total active sessions: ${mcpSessions.size}`);
       
       try {
         await server.connect(transport);
+        console.log(`[MCP] Server connected for session: ${newSessionId}`);
+        
         await transport.handleRequest(req, res);
+        console.log(`[MCP] Initial request handled for session: ${newSessionId}`);
+        
+        // Send session ID in response header for client to use in subsequent requests
+        if (!res.headersSent) {
+          res.setHeader('mcp-session-id', newSessionId);
+        }
       } catch (error: any) {
-        console.error(`[MCP] Session error:`, error.message);
+        console.error(`[MCP] Session error for ${newSessionId}:`, error.message, error.stack);
         mcpSessions.delete(newSessionId);
         if (!res.headersSent) {
-          res.status(500).json({ error: error.message });
+          res.status(500).json({ 
+            jsonrpc: "2.0",
+            error: { code: -32603, message: error.message },
+            id: null
+          });
         }
       }
     } else if (req.method === 'GET') {
-      // SSE fallback for GET requests to /mcp
-      console.log(`[MCP] GET request - redirecting to SSE-style handling`);
-      res.status(405).json({ 
-        error: "Method not allowed. Use POST for MCP requests or GET /sse for SSE transport.",
-        hint: "n8n SSE endpoint: /sse, Streamable HTTP endpoint: /mcp (POST)"
-      });
+      // For GET requests, check if client wants SSE upgrade or just info
+      const acceptHeader = req.headers['accept'] || '';
+      
+      if (acceptHeader.includes('text/event-stream')) {
+        // Client wants SSE - redirect them
+        console.log(`[MCP] GET with SSE accept header - recommend /sse endpoint`);
+        res.status(200).json({ 
+          message: "For SSE transport, please use the /sse endpoint",
+          sse_endpoint: `${process.env.HOST}/sse`,
+          mcp_endpoint: `${process.env.HOST}/mcp (POST)`
+        });
+      } else {
+        // Return endpoint info
+        res.status(200).json({ 
+          protocol: "MCP",
+          transport: "Streamable HTTP",
+          usage: "Send POST requests with JSON-RPC body",
+          sse_alternative: `${process.env.HOST}/sse`,
+          active_sessions: mcpSessions.size
+        });
+      }
     } else if (req.method === 'DELETE') {
       // Session cleanup
       if (sessionIdHeader && mcpSessions.has(sessionIdHeader)) {
@@ -1294,6 +1355,11 @@ async function startHttpServer() {
       } else {
         res.status(404).json({ error: "Session not found" });
       }
+    } else if (req.method === 'OPTIONS') {
+      // CORS preflight
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Shopify-Domain, mcp-session-id');
+      res.status(204).send();
     } else {
       res.status(405).json({ error: "Method not allowed" });
     }
