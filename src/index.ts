@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createShopifyServer } from "./server-factory.js";
 import { v4 as uuidv4 } from "uuid";
 import '@shopify/shopify-api/adapters/node';
@@ -249,11 +250,21 @@ async function startHttpServer() {
                 <p style="margin-bottom: 20px; color: #5c5f62;">Use these credentials to connect <strong>n8n</strong> or any <strong>MCP Client</strong> to this store.</p>
 
                 <div class="field-group">
-                    <label class="label">SSE URL Endpoint</label>
+                    <label class="label">MCP Endpoint (Recommended for n8n)</label>
+                    <div class="input-wrapper">
+                        <input type="text" class="code-input" value="${process.env.HOST}/mcp" readonly id="mcp-url">
+                        <button class="btn" onclick="copy('mcp-url')">Copy</button>
+                    </div>
+                    <small style="color: #6d7175;">Uses Streamable HTTP transport - works best with modern MCP clients</small>
+                </div>
+
+                <div class="field-group">
+                    <label class="label">SSE Endpoint (Legacy)</label>
                     <div class="input-wrapper">
                         <input type="text" class="code-input" value="${process.env.HOST}/sse" readonly id="url">
                         <button class="btn" onclick="copy('url')">Copy</button>
                     </div>
+                    <small style="color: #6d7175;">For clients that only support SSE transport</small>
                 </div>
 
                 <div class="field-group">
@@ -277,8 +288,8 @@ async function startHttpServer() {
                 <h2 class="card-title">📝 Setup Instructions</h2>
                 <ol class="steps">
                     <li class="step">Open your n8n workflow or MCP Client configuration.</li>
-                    <li class="step">Select <strong>SSE Client</strong> or generic HTTP Stream node.</li>
-                    <li class="step">Paste the <strong>SSE URL</strong> from above.</li>
+                    <li class="step">For <strong>n8n</strong>: Try the <strong>MCP Endpoint</strong> first (uses Streamable HTTP). If that doesn't work, use the <strong>SSE Endpoint</strong>.</li>
+                    <li class="step">Paste the URL from above.</li>
                     <li class="step">Add two headers:
                         <ul style="margin-top: 8px; color: #5c5f62;">
                             <li><code>Authorization</code>: Paste the Bearer token.</li>
@@ -407,19 +418,26 @@ async function startHttpServer() {
     res.send(html);
   });
 
-  // SSE Endpoint
+  // SSE Endpoint (Legacy - still supported for backward compatibility)
   app.get("/sse", authMiddleware, async (req, res) => {
-    console.log("New SSE connection...");
+    // === ENHANCED DEBUGGING FOR n8n TROUBLESHOOTING ===
+    console.log("=== NEW SSE CONNECTION ===");
+    console.log("[SSE] Time:", new Date().toISOString());
+    console.log("[SSE] Headers:", JSON.stringify({
+      'user-agent': req.headers['user-agent'],
+      'accept': req.headers['accept'],
+      'x-shopify-domain': req.headers['x-shopify-domain'],
+      'authorization': req.headers['authorization'] ? 'Bearer ***' : 'NOT_SET',
+    }, null, 2));
+    console.log("[SSE] Query:", JSON.stringify(req.query, null, 2));
+    console.log("===========================");
     
-    // CRITICAL: Disable Nginx Buffering for SSE (Coolify/Docker)
-    // We only set this. The SDK (SSEServerTransport) sets Content-Type, Connection, etc.
-    // Do NOT call res.flushHeaders() here, or the SDK will crash with ERR_HTTP_HEADERS_SENT.
-    res.setHeader('X-Accel-Buffering', 'no');
+    // CRITICAL: Headers for SSE compatibility with reverse proxies (Coolify/Traefik/Nginx)
+    res.setHeader('X-Accel-Buffering', 'no');           // Disable Nginx buffering
+    res.setHeader('Cache-Control', 'no-cache, no-transform'); // Prevent caching
+    res.setHeader('X-Content-Type-Options', 'nosniff'); // Security header
     
     // Determine which Shopify Session to use
-    // Option A: Env var (Single Tenant legacy)
-    // Option B: Header (Multi-tenant)
-    // Option C: Query Param (Fallback for clients without Header support)
     const targetShop = (req.headers['x-shopify-domain'] as string) || (req.query.shop as string);
     let shopifySession: Session | undefined;
 
@@ -427,35 +445,38 @@ async function startHttpServer() {
         shopifySession = await sessionStorage.findSessionByShop(targetShop);
         if (!shopifySession) {
              console.warn(`[SSE] Requested shop ${targetShop} not found in session storage.`);
-             // We might continue if they use Env var fallback inside the client...
         } else {
              console.log(`[SSE] Connected context to shop: ${targetShop}`);
         }
+    } else {
+        console.warn(`[SSE] No shop specified via header or query param`);
     }
 
-    const transport = new SSEServerTransport("/message", res);
-    
-    // Pass session to factory (TODO: Update factory to accept session)
-    // For now, factory uses Env var. We need to refactor factory next.
     const server = createShopifyServer(shopifySession);
     
     const sessionId = uuidv4();
-    // Propagate token to the POST endpoint for clients that can't set headers (n8n/Browser)
     const queryToken = req.query.token as string;
     const authQuery = queryToken ? `&token=${queryToken}` : "";
     
     const sessionAwareTransport = new SSEServerTransport(`/message?sessionId=${sessionId}${authQuery}`, res);
     transports.set(sessionId, sessionAwareTransport);
+    
+    console.log(`[SSE] Session created: ${sessionId}`);
 
     sessionAwareTransport.onclose = () => {
-      console.log(`Connection closed: ${sessionId}`);
+      console.log(`[SSE] Connection closed: ${sessionId}`);
       transports.delete(sessionId);
     };
 
-    await server.connect(sessionAwareTransport);
+    try {
+      await server.connect(sessionAwareTransport);
+      console.log(`[SSE] Server connected successfully for session: ${sessionId}`);
+    } catch (error: any) {
+      console.error(`[SSE] Connection error for session ${sessionId}:`, error.message);
+    }
   });
 
-  // Message Endpoint
+  // Message Endpoint (for SSE transport)
   app.post("/message", authMiddleware, async (req, res) => {
     const sessionId = req.query.sessionId as string;
     if (!sessionId) {
@@ -469,9 +490,111 @@ async function startHttpServer() {
     await transport.handlePostMessage(req, res);
   });
 
+  // ============================================================
+  // NEW: Streamable HTTP Transport Endpoint (Recommended by MCP spec)
+  // This is the modern transport that n8n and other clients prefer
+  // ============================================================
+  const mcpSessions = new Map<string, { server: ReturnType<typeof createShopifyServer>, transport: InstanceType<typeof StreamableHTTPServerTransport> }>();
+  
+  app.all("/mcp", authMiddleware, async (req, res) => {
+    console.log("=== NEW MCP STREAMABLE CONNECTION ===");
+    console.log("[MCP] Time:", new Date().toISOString());
+    console.log("[MCP] Method:", req.method);
+    console.log("[MCP] Headers:", JSON.stringify({
+      'user-agent': req.headers['user-agent'],
+      'accept': req.headers['accept'],
+      'content-type': req.headers['content-type'],
+      'x-shopify-domain': req.headers['x-shopify-domain'],
+      'mcp-session-id': req.headers['mcp-session-id'],
+    }, null, 2));
+    console.log("=====================================");
+    
+    // Headers for compatibility
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    
+    // Get or create session
+    const sessionIdHeader = req.headers['mcp-session-id'] as string | undefined;
+    
+    // Determine Shopify session
+    const targetShop = (req.headers['x-shopify-domain'] as string) || (req.query.shop as string);
+    let shopifySession: Session | undefined;
+    if (targetShop) {
+      shopifySession = await sessionStorage.findSessionByShop(targetShop);
+      if (shopifySession) {
+        console.log(`[MCP] Using Shopify session for: ${targetShop}`);
+      }
+    }
+    
+    // Handle different HTTP methods
+    if (req.method === 'POST') {
+      // Check for existing session
+      if (sessionIdHeader && mcpSessions.has(sessionIdHeader)) {
+        const session = mcpSessions.get(sessionIdHeader)!;
+        try {
+          await session.transport.handleRequest(req, res);
+        } catch (error: any) {
+          console.error(`[MCP] Request error:`, error.message);
+          if (!res.headersSent) {
+            res.status(500).json({ error: error.message });
+          }
+        }
+        return;
+      }
+      
+      // Create new session for initialize request
+      const newSessionId = uuidv4();
+      console.log(`[MCP] Creating new session: ${newSessionId}`);
+      
+      const server = createShopifyServer(shopifySession);
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => newSessionId,
+      });
+      
+      mcpSessions.set(newSessionId, { server, transport });
+      
+      // Cleanup on close
+      res.on('close', () => {
+        console.log(`[MCP] Connection closed for session: ${newSessionId}`);
+        mcpSessions.delete(newSessionId);
+      });
+      
+      try {
+        await server.connect(transport);
+        await transport.handleRequest(req, res);
+      } catch (error: any) {
+        console.error(`[MCP] Session error:`, error.message);
+        mcpSessions.delete(newSessionId);
+        if (!res.headersSent) {
+          res.status(500).json({ error: error.message });
+        }
+      }
+    } else if (req.method === 'GET') {
+      // SSE fallback for GET requests to /mcp
+      console.log(`[MCP] GET request - redirecting to SSE-style handling`);
+      res.status(405).json({ 
+        error: "Method not allowed. Use POST for MCP requests or GET /sse for SSE transport.",
+        hint: "n8n SSE endpoint: /sse, Streamable HTTP endpoint: /mcp (POST)"
+      });
+    } else if (req.method === 'DELETE') {
+      // Session cleanup
+      if (sessionIdHeader && mcpSessions.has(sessionIdHeader)) {
+        mcpSessions.delete(sessionIdHeader);
+        console.log(`[MCP] Session deleted: ${sessionIdHeader}`);
+        res.status(200).json({ success: true });
+      } else {
+        res.status(404).json({ error: "Session not found" });
+      }
+    } else {
+      res.status(405).json({ error: "Method not allowed" });
+    }
+  });
+
   app.listen(port, () => {
-    console.log(`Shopify MCP Server listening on port ${port} (HTTP/SSE)`);
+    console.log(`Shopify MCP Server listening on port ${port} (HTTP/SSE/Streamable)`);
     console.log(`Health check: http://localhost:${port}/health`);
+    console.log(`SSE Endpoint: http://localhost:${port}/sse`);
+    console.log(`MCP Endpoint: http://localhost:${port}/mcp`);
     console.log(`OAuth URL: http://localhost:${port}/auth?shop=...`);
   });
 }

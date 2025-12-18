@@ -6,6 +6,7 @@ It acts as a bridge, allowing AI Agents (n8n, Claude Desktop, Cursor) to manage 
 ## ✨ Features
 *   **System-Level OAuth**: Installs as a real Shopify App on multiple stores.
 *   **Multi-Tenancy**: Manage different stores using a single server instance.
+*   **Dual Transport**: Supports both **Streamable HTTP** (recommended) and **SSE** (legacy).
 *   **Secure**: Protected by Bearer Tokens and system headers.
 *   **Embedded Dashboard**: Includes a helpful UI when viewed inside Shopify Admin.
 *   **Docker Ready**: Optimized for Coolify/Portainer deployment on port `38383`.
@@ -25,12 +26,20 @@ It acts as a bridge, allowing AI Agents (n8n, Claude Desktop, Cursor) to manage 
 3.  Visit your URL to see the Dashboard!
 
 ## 🔗 Connecting Clients
-Use **SSE (Server-Sent Events)** to connect:
+
+### Streamable HTTP (Recommended for n8n)
+*   **URL**: `https://your-server.com/mcp`
+*   **Method**: POST
+*   **Auth**: `Authorization: Bearer <MCP_SERVER_TOKEN>`
+*   **Context**: `X-Shopify-Domain: <shop-domain>`
+
+### SSE (Legacy)
 *   **URL**: `https://your-server.com/sse`
 *   **Auth**: `Authorization: Bearer <MCP_SERVER_TOKEN>`
 *   **Context**: `X-Shopify-Domain: <shop-domain>`
 
 ## 🛠 Tech Stack
 *   Node.js & TypeScript
-*   Express & SSEServerTransport
+*   Express & MCP SDK (Streamable HTTP + SSE)
 *   `@shopify/shopify-api`
+

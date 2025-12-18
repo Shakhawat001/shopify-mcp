@@ -7,7 +7,8 @@ To build a **Headless, Multi-Tenant MCP Server** that exposes the full capabilit
 *   **Framework**: Node.js + Express
 *   **Protocol**: MCP (Model Context Protocol) via Reference SDK (`@modelcontextprotocol/sdk`)
 *   **Transport**: 
-    *   **SSE (Server-Sent Events)**: Primary transport for remote connections (`/sse`, `/message`).
+    *   **Streamable HTTP**: Recommended transport for n8n and modern clients (`/mcp`).
+    *   **SSE (Server-Sent Events)**: Legacy transport for older clients (`/sse`, `/message`).
     *   **Stdio**: Fallback for local CLI usage.
 *   **Shopify Integration**: Uses `@shopify/shopify-api` (Node adapter).
 *   **Deployment**: Dockerized (Alpine Node 20), optimized for Coolify.
