@@ -1080,8 +1080,10 @@ async function startHttpServer() {
       const session = callbackResponse.session;
       await sessionStorage.storeSession(session);
 
-      res.send(`<h1>App Installed Successfully!</h1><p>Session stored for ${session.shop}. You can now connect via MCP using X-Shopify-Domain: ${session.shop} header.</p>`);
-      console.log(`[OAuth] Session stored for ${session.shop}`);
+      // Redirect to dashboard with shop parameter so user sees their API key
+      const host = process.env.HOST || '';
+      res.redirect(`${host}/?shop=${session.shop}`);
+      console.log(`[OAuth] Session stored for ${session.shop}, redirecting to dashboard`);
     } catch (error: any) {
       console.error(error);
       res.status(500).send(`Auth failed: ${error.message}`);
