@@ -7,8 +7,11 @@ import {
   getProduct,
   getBlogs,
   getBlogArticles,
+  getArticle,
   createBlogArticle,
   updateBlogArticle,
+  deleteArticle,
+  publishArticle,
   getShopAnalytics,
   updateProduct,
   deleteProduct,
@@ -290,13 +293,13 @@ export function createShopifyServer(session?: Session) {
   );
 
   // ============================================================
-  // BLOG TOOLS
+  // BLOG TOOLS (Enhanced)
   // ============================================================
 
   // Tool: shopify_list_blogs
   server.tool(
     "shopify_list_blogs",
-    "List all blogs in the store. Use this to find blog IDs before creating articles.",
+    "List all blogs in the store. Returns blog IDs, titles, handles, and URLs. Use this to find blog IDs before creating articles.",
     {},
     async () => {
       try {
@@ -321,7 +324,7 @@ export function createShopifyServer(session?: Session) {
   // Tool: shopify_list_blog_articles
   server.tool(
     "shopify_list_blog_articles",
-    "List articles from a specific blog. Use this to see existing blog posts.",
+    "List articles from a specific blog with details like author, tags, publish status, and images.",
     {
       blogId: z.string().describe("The blog ID (e.g. gid://shopify/Blog/123)"),
       limit: z.number().min(1).max(50).default(10).describe("Number of articles to return"),
@@ -346,23 +349,56 @@ export function createShopifyServer(session?: Session) {
     }
   );
 
+  // Tool: shopify_get_article
+  server.tool(
+    "shopify_get_article",
+    "Get full details of a specific blog article including body content, SEO, author info, and image.",
+    {
+      articleId: z.string().describe("The article ID (e.g. gid://shopify/Article/123)"),
+    },
+    async ({ articleId }) => {
+      try {
+        const article = await getArticle(articleId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(article, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting article: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
   // Tool: shopify_create_blog_article
   server.tool(
     "shopify_create_blog_article",
-    "Create a new blog article. Use this to publish new content to the store blog.",
+    "Create a new blog article with full SEO, author, tags, and image support. Set published=true to publish immediately.",
     {
-      blogId: z.string().describe("The blog ID to create the article in (e.g. gid://shopify/Blog/123)"),
+      blogId: z.string().describe("The blog ID (e.g. gid://shopify/Blog/123)"),
       title: z.string().describe("Title of the article"),
       body: z.string().describe("HTML content of the article body"),
       author: z.string().optional().describe("Author name"),
-      summary: z.string().optional().describe("Short summary/excerpt"),
-      published: z.boolean().optional().default(false).describe("Whether to publish immediately"),
+      authorEmail: z.string().optional().describe("Author email address"),
+      summary: z.string().optional().describe("Short summary/excerpt for previews"),
+      tags: z.array(z.string()).optional().describe("Array of tags (e.g. ['holiday', 'sale', 'announcement'])"),
+      imageUrl: z.string().optional().describe("URL of the featured image"),
+      imageAltText: z.string().optional().describe("Alt text for the image"),
+      seoTitle: z.string().optional().describe("SEO title (defaults to article title)"),
+      seoDescription: z.string().optional().describe("SEO meta description"),
+      published: z.boolean().optional().default(true).describe("Publish immediately (default: true)"),
     },
     async (args) => {
       try {
         server.sendLoggingMessage({
           level: "info",
-          data: `[Tool:CreateBlogArticle] Creating article: ${args.title}`
+          data: `[Tool:CreateBlogArticle] Creating article: ${args.title} (published: ${args.published})`
         });
         const article = await createBlogArticle(args, session?.shop, session?.accessToken);
         return {
@@ -385,13 +421,18 @@ export function createShopifyServer(session?: Session) {
   // Tool: shopify_update_blog_article
   server.tool(
     "shopify_update_blog_article",
-    "Update an existing blog article. Use this to edit published content.",
+    "Update an existing blog article. Can modify content, SEO, tags, image, and publish status.",
     {
       articleId: z.string().describe("The article ID to update (e.g. gid://shopify/Article/123)"),
       title: z.string().optional().describe("New title"),
       body: z.string().optional().describe("New HTML content"),
-      summary: z.string().optional().describe("New summary"),
-      published: z.boolean().optional().describe("Publish or unpublish"),
+      summary: z.string().optional().describe("New summary/excerpt"),
+      tags: z.array(z.string()).optional().describe("New tags array"),
+      imageUrl: z.string().optional().describe("New featured image URL"),
+      imageAltText: z.string().optional().describe("New image alt text"),
+      seoTitle: z.string().optional().describe("New SEO title"),
+      seoDescription: z.string().optional().describe("New SEO description"),
+      published: z.boolean().optional().describe("Publish (true) or unpublish (false)"),
     },
     async (args) => {
       try {
@@ -411,6 +452,69 @@ export function createShopifyServer(session?: Session) {
           content: [{
             type: "text",
             text: `Error updating article: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_delete_article
+  server.tool(
+    "shopify_delete_article",
+    "Permanently delete a blog article. This cannot be undone!",
+    {
+      articleId: z.string().describe("The article ID to delete (e.g. gid://shopify/Article/123)"),
+    },
+    async ({ articleId }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "warning",
+          data: `[Tool:DeleteArticle] Deleting article: ${articleId}`
+        });
+        const result = await deleteArticle(articleId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Article deleted successfully. ID: ${result.deletedArticleId}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting article: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_publish_article
+  server.tool(
+    "shopify_publish_article",
+    "Quick publish or unpublish a blog article without modifying other content.",
+    {
+      articleId: z.string().describe("The article ID (e.g. gid://shopify/Article/123)"),
+      publish: z.boolean().describe("true to publish, false to unpublish"),
+    },
+    async ({ articleId, publish }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:PublishArticle] ${publish ? 'Publishing' : 'Unpublishing'} article: ${articleId}`
+        });
+        const article = await publishArticle(articleId, publish, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Article ${publish ? 'published' : 'unpublished'} successfully.\n${JSON.stringify(article, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error ${publish ? 'publishing' : 'unpublishing'} article: ${error.message}`
           }]
         };
       }

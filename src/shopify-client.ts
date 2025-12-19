@@ -168,7 +168,7 @@ export async function getProduct(id: string, shopDomain?: string, accessToken?: 
 }
 
 // ============================================================
-// BLOG POSTS FUNCTIONS
+// BLOG POSTS FUNCTIONS (Enhanced)
 // ============================================================
 
 export async function getBlogs(first = 10, shopDomain?: string, accessToken?: string) {
@@ -180,6 +180,7 @@ export async function getBlogs(first = 10, shopDomain?: string, accessToken?: st
             id
             title
             handle
+            onlineStoreUrl
           }
         }
       }
@@ -194,6 +195,7 @@ export async function getBlogArticles(blogId: string, first = 10, shopDomain?: s
       blog(id: $blogId) {
         id
         title
+        handle
         articles(first: $first, sortKey: PUBLISHED_AT, reverse: true) {
           edges {
             node {
@@ -201,9 +203,17 @@ export async function getBlogArticles(blogId: string, first = 10, shopDomain?: s
               title
               handle
               publishedAt
+              createdAt
               summary
+              tags
+              isPublished
               author {
                 name
+                email
+              }
+              image {
+                url
+                altText
               }
             }
           }
@@ -214,8 +224,57 @@ export async function getBlogArticles(blogId: string, first = 10, shopDomain?: s
   return shopifyGraphQL(query, { blogId, first }, shopDomain, accessToken);
 }
 
+export async function getArticle(articleId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetArticle($id: ID!) {
+      article(id: $id) {
+        id
+        title
+        handle
+        body
+        summary
+        tags
+        isPublished
+        publishedAt
+        createdAt
+        author {
+          name
+          email
+        }
+        image {
+          url
+          altText
+        }
+        seo {
+          title
+          description
+        }
+        blog {
+          id
+          title
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id: articleId }, shopDomain, accessToken);
+  return data.article;
+}
+
 export async function createBlogArticle(
-  input: { blogId: string; title: string; body: string; author?: string; summary?: string; published?: boolean },
+  input: { 
+    blogId: string; 
+    title: string; 
+    body: string; 
+    author?: string; 
+    authorEmail?: string;
+    summary?: string; 
+    tags?: string[];
+    imageUrl?: string;
+    imageAltText?: string;
+    seoTitle?: string;
+    seoDescription?: string;
+    published?: boolean;
+  },
   shopDomain?: string,
   accessToken?: string
 ) {
@@ -227,6 +286,15 @@ export async function createBlogArticle(
           title
           handle
           publishedAt
+          isPublished
+          tags
+          author {
+            name
+          }
+          blog {
+            id
+            title
+          }
         }
         userErrors {
           field
@@ -236,16 +304,40 @@ export async function createBlogArticle(
     }
   `;
 
-  const variables = {
+  const variables: any = {
     article: {
       blogId: input.blogId,
       title: input.title,
       body: input.body,
-      author: input.author ? { name: input.author } : undefined,
       summary: input.summary,
-      published: input.published ?? false,
+      tags: input.tags,
+      isPublished: input.published ?? false,
     }
   };
+
+  // Add author if provided
+  if (input.author) {
+    variables.article.author = {
+      name: input.author,
+      email: input.authorEmail
+    };
+  }
+
+  // Add image if provided
+  if (input.imageUrl) {
+    variables.article.image = {
+      src: input.imageUrl,
+      altText: input.imageAltText || input.title
+    };
+  }
+
+  // Add SEO if provided
+  if (input.seoTitle || input.seoDescription) {
+    variables.article.seo = {
+      title: input.seoTitle,
+      description: input.seoDescription
+    };
+  }
 
   const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
   
@@ -257,7 +349,18 @@ export async function createBlogArticle(
 }
 
 export async function updateBlogArticle(
-  input: { articleId: string; title?: string; body?: string; summary?: string; published?: boolean },
+  input: { 
+    articleId: string; 
+    title?: string; 
+    body?: string; 
+    summary?: string; 
+    tags?: string[];
+    imageUrl?: string;
+    imageAltText?: string;
+    seoTitle?: string;
+    seoDescription?: string;
+    published?: boolean;
+  },
   shopDomain?: string,
   accessToken?: string
 ) {
@@ -269,6 +372,8 @@ export async function updateBlogArticle(
           title
           handle
           publishedAt
+          isPublished
+          tags
         }
         userErrors {
           field
@@ -278,14 +383,33 @@ export async function updateBlogArticle(
     }
   `;
 
+  const articleUpdate: any = {};
+  
+  if (input.title !== undefined) articleUpdate.title = input.title;
+  if (input.body !== undefined) articleUpdate.body = input.body;
+  if (input.summary !== undefined) articleUpdate.summary = input.summary;
+  if (input.tags !== undefined) articleUpdate.tags = input.tags;
+  if (input.published !== undefined) articleUpdate.isPublished = input.published;
+  
+  // Add image if provided
+  if (input.imageUrl) {
+    articleUpdate.image = {
+      src: input.imageUrl,
+      altText: input.imageAltText || ''
+    };
+  }
+
+  // Add SEO if provided
+  if (input.seoTitle || input.seoDescription) {
+    articleUpdate.seo = {
+      title: input.seoTitle,
+      description: input.seoDescription
+    };
+  }
+
   const variables = {
     id: input.articleId,
-    article: {
-      title: input.title,
-      body: input.body,
-      summary: input.summary,
-      published: input.published,
-    }
+    article: articleUpdate
   };
 
   const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
@@ -296,6 +420,34 @@ export async function updateBlogArticle(
   
   return data.articleUpdate?.article;
 }
+
+export async function deleteArticle(articleId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation articleDelete($id: ID!) {
+      articleDelete(id: $id) {
+        deletedArticleId
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { id: articleId }, shopDomain, accessToken);
+  
+  if (data.articleDelete?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.articleDelete.userErrors)}`);
+  }
+  
+  return { deletedArticleId: data.articleDelete?.deletedArticleId };
+}
+
+export async function publishArticle(articleId: string, publish: boolean = true, shopDomain?: string, accessToken?: string) {
+  // This is a convenience wrapper around updateBlogArticle
+  return updateBlogArticle({ articleId, published: publish }, shopDomain, accessToken);
+}
+
 
 // ============================================================
 // ANALYTICS FUNCTIONS
