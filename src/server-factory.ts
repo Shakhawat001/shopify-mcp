@@ -1,6 +1,19 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getProducts, getRecentOrders, createProduct, getProduct } from "./shopify-client.js";
+import { 
+  getProducts, 
+  getRecentOrders, 
+  createProduct, 
+  getProduct,
+  getBlogs,
+  getBlogArticles,
+  createBlogArticle,
+  updateBlogArticle,
+  getShopAnalytics,
+  updateProduct,
+  deleteProduct,
+  getOrder
+} from "./shopify-client.js";
 import { Session } from "@shopify/shopify-api";
 
 export function createShopifyServer(session?: Session) {
@@ -270,6 +283,294 @@ export function createShopifyServer(session?: Session) {
           content: [{
             type: "text",
             text: `Error creating product: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // BLOG TOOLS
+  // ============================================================
+
+  // Tool: shopify_list_blogs
+  server.tool(
+    "shopify_list_blogs",
+    "List all blogs in the store. Use this to find blog IDs before creating articles.",
+    {},
+    async () => {
+      try {
+        const blogs = await getBlogs(10, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(blogs, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing blogs: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_list_blog_articles
+  server.tool(
+    "shopify_list_blog_articles",
+    "List articles from a specific blog. Use this to see existing blog posts.",
+    {
+      blogId: z.string().describe("The blog ID (e.g. gid://shopify/Blog/123)"),
+      limit: z.number().min(1).max(50).default(10).describe("Number of articles to return"),
+    },
+    async ({ blogId, limit }) => {
+      try {
+        const articles = await getBlogArticles(blogId, limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(articles, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing articles: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_blog_article
+  server.tool(
+    "shopify_create_blog_article",
+    "Create a new blog article. Use this to publish new content to the store blog.",
+    {
+      blogId: z.string().describe("The blog ID to create the article in (e.g. gid://shopify/Blog/123)"),
+      title: z.string().describe("Title of the article"),
+      body: z.string().describe("HTML content of the article body"),
+      author: z.string().optional().describe("Author name"),
+      summary: z.string().optional().describe("Short summary/excerpt"),
+      published: z.boolean().optional().default(false).describe("Whether to publish immediately"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateBlogArticle] Creating article: ${args.title}`
+        });
+        const article = await createBlogArticle(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(article, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating article: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_update_blog_article
+  server.tool(
+    "shopify_update_blog_article",
+    "Update an existing blog article. Use this to edit published content.",
+    {
+      articleId: z.string().describe("The article ID to update (e.g. gid://shopify/Article/123)"),
+      title: z.string().optional().describe("New title"),
+      body: z.string().optional().describe("New HTML content"),
+      summary: z.string().optional().describe("New summary"),
+      published: z.boolean().optional().describe("Publish or unpublish"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:UpdateBlogArticle] Updating article: ${args.articleId}`
+        });
+        const article = await updateBlogArticle(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(article, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error updating article: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // ANALYTICS TOOLS
+  // ============================================================
+
+  // Tool: shopify_get_analytics
+  server.tool(
+    "shopify_get_analytics",
+    "Get store analytics including recent orders summary, revenue, and fulfillment stats. Use this to generate performance reports.",
+    {},
+    async () => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:GetAnalytics] Fetching store analytics`
+        });
+        const analytics = await getShopAnalytics(session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(analytics, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error fetching analytics: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // PRODUCT UPDATE/DELETE TOOLS
+  // ============================================================
+
+  // Tool: shopify_update_product
+  server.tool(
+    "shopify_update_product",
+    "Update an existing product. Use this to change product details like title, description, or status.",
+    {
+      productId: z.string().describe("The product ID to update (e.g. gid://shopify/Product/123)"),
+      title: z.string().optional().describe("New product title"),
+      description: z.string().optional().describe("New HTML description"),
+      status: z.enum(["ACTIVE", "DRAFT", "ARCHIVED"]).optional().describe("New product status"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:UpdateProduct] Updating product: ${args.productId}`
+        });
+        const product = await updateProduct(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(product, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error updating product: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_delete_product
+  server.tool(
+    "shopify_delete_product",
+    "Delete a product permanently. Use with caution - this cannot be undone!",
+    {
+      productId: z.string().describe("The product ID to delete (e.g. gid://shopify/Product/123)"),
+    },
+    async ({ productId }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "warning",
+          data: `[Tool:DeleteProduct] Deleting product: ${productId}`
+        });
+        const result = await deleteProduct(productId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Product deleted successfully. ID: ${result.deletedProductId}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting product: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // ORDER TOOLS
+  // ============================================================
+
+  // Tool: shopify_get_order
+  server.tool(
+    "shopify_get_order",
+    "Get detailed information about a specific order including items, shipping, and customer info.",
+    {
+      orderId: z.string().describe("The order ID (e.g. gid://shopify/Order/123)"),
+    },
+    async ({ orderId }) => {
+      try {
+        const order = await getOrder(orderId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(order, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error fetching order: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_list_recent_orders
+  server.tool(
+    "shopify_list_recent_orders",
+    "List recent orders from the store with basic details and fulfillment status.",
+    {
+      limit: z.number().min(1).max(50).default(10).describe("Number of orders to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const orders = await getRecentOrders(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(orders, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing orders: ${error.message}`
           }]
         };
       }
