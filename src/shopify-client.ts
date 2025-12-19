@@ -653,3 +653,648 @@ export async function getOrder(orderId: string, shopDomain?: string, accessToken
   const data = await shopifyGraphQL(query, { id: orderId }, shopDomain, accessToken);
   return data.order;
 }
+
+// ============================================================
+// CUSTOMER FUNCTIONS
+// ============================================================
+
+export async function getCustomers(first = 10, query?: string, shopDomain?: string, accessToken?: string) {
+  const gql = `
+    query GetCustomers($first: Int!, $query: String) {
+      customers(first: $first, query: $query) {
+        edges {
+          node {
+            id
+            firstName
+            lastName
+            email
+            phone
+            numberOfOrders
+            amountSpent {
+              amount
+              currencyCode
+            }
+            createdAt
+            tags
+            verifiedEmail
+            validEmailAddress
+            note
+          }
+        }
+      }
+    }
+  `;
+  return shopifyGraphQL(gql, { first, query: query || null }, shopDomain, accessToken);
+}
+
+export async function getCustomer(customerId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetCustomer($id: ID!) {
+      customer(id: $id) {
+        id
+        firstName
+        lastName
+        email
+        phone
+        numberOfOrders
+        amountSpent {
+          amount
+          currencyCode
+        }
+        createdAt
+        updatedAt
+        tags
+        note
+        defaultAddress {
+          address1
+          address2
+          city
+          province
+          country
+          zip
+        }
+        orders(first: 10) {
+          edges {
+            node {
+              id
+              name
+              totalPriceSet {
+                shopMoney {
+                  amount
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id: customerId }, shopDomain, accessToken);
+  return data.customer;
+}
+
+export async function createCustomer(
+  input: { firstName?: string; lastName?: string; email?: string; phone?: string; note?: string; tags?: string[] },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation customerCreate($input: CustomerInput!) {
+      customerCreate(input: $input) {
+        customer {
+          id
+          firstName
+          lastName
+          email
+          phone
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { input }, shopDomain, accessToken);
+  
+  if (data.customerCreate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.customerCreate.userErrors)}`);
+  }
+  
+  return data.customerCreate?.customer;
+}
+
+export async function updateCustomer(
+  input: { customerId: string; firstName?: string; lastName?: string; email?: string; phone?: string; note?: string; tags?: string[] },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation customerUpdate($input: CustomerInput!) {
+      customerUpdate(input: $input) {
+        customer {
+          id
+          firstName
+          lastName
+          email
+          phone
+          tags
+          note
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const { customerId, ...rest } = input;
+  const data = await shopifyGraphQL(query, { input: { id: customerId, ...rest } }, shopDomain, accessToken);
+  
+  if (data.customerUpdate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.customerUpdate.userErrors)}`);
+  }
+  
+  return data.customerUpdate?.customer;
+}
+
+// ============================================================
+// INVENTORY FUNCTIONS
+// ============================================================
+
+export async function getInventoryLevels(productId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetInventoryLevels($id: ID!) {
+      product(id: $id) {
+        id
+        title
+        totalInventory
+        variants(first: 50) {
+          edges {
+            node {
+              id
+              title
+              sku
+              inventoryQuantity
+              inventoryItem {
+                id
+                tracked
+                inventoryLevels(first: 10) {
+                  edges {
+                    node {
+                      id
+                      available
+                      location {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id: productId }, shopDomain, accessToken);
+  return data.product;
+}
+
+export async function adjustInventory(
+  input: { inventoryItemId: string; locationId: string; delta: number; reason?: string },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation inventoryAdjustQuantities($input: InventoryAdjustQuantitiesInput!) {
+      inventoryAdjustQuantities(input: $input) {
+        inventoryAdjustmentGroup {
+          reason
+          changes {
+            name
+            delta
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables = {
+    input: {
+      reason: input.reason || "other",
+      name: "available",
+      changes: [{
+        inventoryItemId: input.inventoryItemId,
+        locationId: input.locationId,
+        delta: input.delta
+      }]
+    }
+  };
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.inventoryAdjustQuantities?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.inventoryAdjustQuantities.userErrors)}`);
+  }
+  
+  return data.inventoryAdjustQuantities?.inventoryAdjustmentGroup;
+}
+
+export async function getLocations(shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetLocations {
+      locations(first: 50) {
+        edges {
+          node {
+            id
+            name
+            address {
+              address1
+              city
+              country
+            }
+            isActive
+            fulfillmentService {
+              serviceName
+            }
+          }
+        }
+      }
+    }
+  `;
+  return shopifyGraphQL(query, {}, shopDomain, accessToken);
+}
+
+// ============================================================
+// COLLECTION FUNCTIONS
+// ============================================================
+
+export async function getCollections(first = 20, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetCollections($first: Int!) {
+      collections(first: $first) {
+        edges {
+          node {
+            id
+            title
+            handle
+            description
+            productsCount
+            sortOrder
+          }
+        }
+      }
+    }
+  `;
+  return shopifyGraphQL(query, { first }, shopDomain, accessToken);
+}
+
+export async function getCollection(collectionId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetCollection($id: ID!) {
+      collection(id: $id) {
+        id
+        title
+        handle
+        description
+        productsCount
+        sortOrder
+        products(first: 50) {
+          edges {
+            node {
+              id
+              title
+              handle
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id: collectionId }, shopDomain, accessToken);
+  return data.collection;
+}
+
+export async function createCollection(
+  input: { title: string; description?: string; },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation collectionCreate($input: CollectionInput!) {
+      collectionCreate(input: $input) {
+        collection {
+          id
+          title
+          handle
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { input }, shopDomain, accessToken);
+  
+  if (data.collectionCreate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.collectionCreate.userErrors)}`);
+  }
+  
+  return data.collectionCreate?.collection;
+}
+
+export async function addProductsToCollection(
+  collectionId: string,
+  productIds: string[],
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation collectionAddProducts($id: ID!, $productIds: [ID!]!) {
+      collectionAddProducts(id: $id, productIds: $productIds) {
+        collection {
+          id
+          title
+          productsCount
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { id: collectionId, productIds }, shopDomain, accessToken);
+  
+  if (data.collectionAddProducts?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.collectionAddProducts.userErrors)}`);
+  }
+  
+  return data.collectionAddProducts?.collection;
+}
+
+// ============================================================
+// DISCOUNT FUNCTIONS
+// ============================================================
+
+export async function getDiscounts(first = 20, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetDiscounts($first: Int!) {
+      discountNodes(first: $first) {
+        edges {
+          node {
+            id
+            discount {
+              ... on DiscountCodeBasic {
+                title
+                status
+                codes(first: 5) {
+                  edges {
+                    node {
+                      code
+                    }
+                  }
+                }
+                startsAt
+                endsAt
+              }
+              ... on DiscountCodeBxgy {
+                title
+                status
+                startsAt
+                endsAt
+              }
+              ... on DiscountCodeFreeShipping {
+                title
+                status
+                startsAt
+                endsAt
+              }
+              ... on DiscountAutomaticBasic {
+                title
+                status
+                startsAt
+                endsAt
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  return shopifyGraphQL(query, { first }, shopDomain, accessToken);
+}
+
+export async function createDiscountCode(
+  input: { 
+    title: string; 
+    code: string; 
+    percentOff?: number;
+    amountOff?: number;
+    startsAt?: string;
+    endsAt?: string;
+    usageLimit?: number;
+  },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  // Using basic discount code
+  const query = `
+    mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
+        codeDiscountNode {
+          id
+          codeDiscount {
+            ... on DiscountCodeBasic {
+              title
+              codes(first: 1) {
+                edges {
+                  node {
+                    code
+                  }
+                }
+              }
+            }
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const customerGets: any = {
+    items: { all: true },
+  };
+
+  if (input.percentOff) {
+    customerGets.value = { percentage: input.percentOff / 100 };
+  } else if (input.amountOff) {
+    customerGets.value = { discountAmount: { amount: input.amountOff, appliesOnEachItem: false } };
+  } else {
+    customerGets.value = { percentage: 0.1 }; // Default 10%
+  }
+
+  const variables = {
+    basicCodeDiscount: {
+      title: input.title,
+      code: input.code,
+      startsAt: input.startsAt || new Date().toISOString(),
+      endsAt: input.endsAt,
+      usageLimit: input.usageLimit,
+      customerGets,
+      customerSelection: { all: true },
+      appliesOncePerCustomer: true,
+    }
+  };
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.discountCodeBasicCreate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.discountCodeBasicCreate.userErrors)}`);
+  }
+  
+  return data.discountCodeBasicCreate?.codeDiscountNode;
+}
+
+// ============================================================
+// FULFILLMENT FUNCTIONS
+// ============================================================
+
+export async function getOrderFulfillments(orderId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetOrderFulfillments($id: ID!) {
+      order(id: $id) {
+        id
+        name
+        displayFulfillmentStatus
+        fulfillments {
+          id
+          status
+          createdAt
+          trackingInfo {
+            company
+            number
+            url
+          }
+          fulfillmentLineItems(first: 50) {
+            edges {
+              node {
+                lineItem {
+                  title
+                  quantity
+                }
+                quantity
+              }
+            }
+          }
+        }
+        fulfillmentOrders(first: 10) {
+          edges {
+            node {
+              id
+              status
+              assignedLocation {
+                name
+              }
+              lineItems(first: 50) {
+                edges {
+                  node {
+                    id
+                    totalQuantity
+                    remainingQuantity
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id: orderId }, shopDomain, accessToken);
+  return data.order;
+}
+
+export async function createFulfillment(
+  input: { fulfillmentOrderId: string; trackingNumber?: string; trackingCompany?: string; trackingUrl?: string; notifyCustomer?: boolean },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation fulfillmentCreateV2($fulfillment: FulfillmentV2Input!) {
+      fulfillmentCreateV2(fulfillment: $fulfillment) {
+        fulfillment {
+          id
+          status
+          trackingInfo {
+            company
+            number
+            url
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables: any = {
+    fulfillment: {
+      lineItemsByFulfillmentOrder: [{
+        fulfillmentOrderId: input.fulfillmentOrderId
+      }],
+      notifyCustomer: input.notifyCustomer ?? true,
+    }
+  };
+
+  if (input.trackingNumber || input.trackingCompany) {
+    variables.fulfillment.trackingInfo = {
+      number: input.trackingNumber,
+      company: input.trackingCompany,
+      url: input.trackingUrl
+    };
+  }
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.fulfillmentCreateV2?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.fulfillmentCreateV2.userErrors)}`);
+  }
+  
+  return data.fulfillmentCreateV2?.fulfillment;
+}
+
+// ============================================================
+// SHOP INFO
+// ============================================================
+
+export async function getShopInfo(shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetShopInfo {
+      shop {
+        id
+        name
+        email
+        url
+        primaryDomain {
+          url
+          host
+        }
+        currencyCode
+        weightUnit
+        timezoneAbbreviation
+        ianaTimezone
+        plan {
+          displayName
+          partnerDevelopment
+          shopifyPlus
+        }
+        contactEmail
+        billingAddress {
+          address1
+          city
+          country
+          zip
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, {}, shopDomain, accessToken);
+  return data.shop;
+}

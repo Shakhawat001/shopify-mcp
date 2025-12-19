@@ -15,7 +15,24 @@ import {
   getShopAnalytics,
   updateProduct,
   deleteProduct,
-  getOrder
+  getOrder,
+  // New capabilities
+  getCustomers,
+  getCustomer,
+  createCustomer,
+  updateCustomer,
+  getInventoryLevels,
+  adjustInventory,
+  getLocations,
+  getCollections,
+  getCollection,
+  createCollection,
+  addProductsToCollection,
+  getDiscounts,
+  createDiscountCode,
+  getOrderFulfillments,
+  createFulfillment,
+  getShopInfo
 } from "./shopify-client.js";
 import { Session } from "@shopify/shopify-api";
 
@@ -675,6 +692,513 @@ export function createShopifyServer(session?: Session) {
           content: [{
             type: "text",
             text: `Error listing orders: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // CUSTOMER TOOLS
+  // ============================================================
+
+  // Tool: shopify_list_customers
+  server.tool(
+    "shopify_list_customers",
+    "Search and list customers. Can filter by email, name, or other criteria.",
+    {
+      limit: z.number().min(1).max(50).default(10).describe("Number of customers to return"),
+      query: z.string().optional().describe("Search query (e.g. 'email:john@example.com' or 'first_name:John')"),
+    },
+    async ({ limit, query }) => {
+      try {
+        const customers = await getCustomers(limit, query, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(customers, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing customers: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_get_customer
+  server.tool(
+    "shopify_get_customer",
+    "Get detailed info about a specific customer including orders and address.",
+    {
+      customerId: z.string().describe("The customer ID (e.g. gid://shopify/Customer/123)"),
+    },
+    async ({ customerId }) => {
+      try {
+        const customer = await getCustomer(customerId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(customer, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting customer: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_customer
+  server.tool(
+    "shopify_create_customer",
+    "Create a new customer with email, name, phone, notes, and tags.",
+    {
+      email: z.string().optional().describe("Customer email address"),
+      firstName: z.string().optional().describe("First name"),
+      lastName: z.string().optional().describe("Last name"),
+      phone: z.string().optional().describe("Phone number"),
+      note: z.string().optional().describe("Internal note about customer"),
+      tags: z.array(z.string()).optional().describe("Tags for segmentation (e.g. ['vip', 'wholesale'])"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateCustomer] Creating customer: ${args.email || args.firstName}`
+        });
+        const customer = await createCustomer(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(customer, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating customer: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_update_customer
+  server.tool(
+    "shopify_update_customer",
+    "Update an existing customer's info, tags, or notes.",
+    {
+      customerId: z.string().describe("The customer ID to update"),
+      email: z.string().optional().describe("New email"),
+      firstName: z.string().optional().describe("New first name"),
+      lastName: z.string().optional().describe("New last name"),
+      phone: z.string().optional().describe("New phone"),
+      note: z.string().optional().describe("Updated note"),
+      tags: z.array(z.string()).optional().describe("New tags array"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:UpdateCustomer] Updating customer: ${args.customerId}`
+        });
+        const customer = await updateCustomer(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(customer, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error updating customer: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // INVENTORY TOOLS
+  // ============================================================
+
+  // Tool: shopify_get_inventory
+  server.tool(
+    "shopify_get_inventory",
+    "Get inventory levels for a product across all locations.",
+    {
+      productId: z.string().describe("The product ID (e.g. gid://shopify/Product/123)"),
+    },
+    async ({ productId }) => {
+      try {
+        const inventory = await getInventoryLevels(productId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(inventory, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting inventory: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_adjust_inventory
+  server.tool(
+    "shopify_adjust_inventory",
+    "Adjust inventory quantity for a product variant at a specific location.",
+    {
+      inventoryItemId: z.string().describe("The inventory item ID (from get_inventory)"),
+      locationId: z.string().describe("The location ID (from get_locations)"),
+      delta: z.number().describe("Quantity change (+5 to add, -3 to remove)"),
+      reason: z.string().optional().describe("Reason: 'correction', 'received', 'damaged', 'other'"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:AdjustInventory] Adjusting by ${args.delta}: ${args.inventoryItemId}`
+        });
+        const result = await adjustInventory(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Inventory adjusted successfully.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adjusting inventory: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_get_locations
+  server.tool(
+    "shopify_get_locations",
+    "Get all inventory/fulfillment locations for the store.",
+    {},
+    async () => {
+      try {
+        const locations = await getLocations(session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(locations, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting locations: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // COLLECTION TOOLS
+  // ============================================================
+
+  // Tool: shopify_list_collections
+  server.tool(
+    "shopify_list_collections",
+    "List all product collections in the store.",
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number of collections to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const collections = await getCollections(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(collections, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing collections: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_get_collection
+  server.tool(
+    "shopify_get_collection",
+    "Get details about a collection including its products.",
+    {
+      collectionId: z.string().describe("The collection ID (e.g. gid://shopify/Collection/123)"),
+    },
+    async ({ collectionId }) => {
+      try {
+        const collection = await getCollection(collectionId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(collection, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting collection: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_collection
+  server.tool(
+    "shopify_create_collection",
+    "Create a new manual collection.",
+    {
+      title: z.string().describe("Collection title"),
+      description: z.string().optional().describe("Collection description"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateCollection] Creating collection: ${args.title}`
+        });
+        const collection = await createCollection(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(collection, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating collection: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_add_products_to_collection
+  server.tool(
+    "shopify_add_products_to_collection",
+    "Add products to a manual collection.",
+    {
+      collectionId: z.string().describe("The collection ID"),
+      productIds: z.array(z.string()).describe("Array of product IDs to add"),
+    },
+    async ({ collectionId, productIds }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:AddToCollection] Adding ${productIds.length} products to: ${collectionId}`
+        });
+        const collection = await addProductsToCollection(collectionId, productIds, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(collection, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adding products: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // DISCOUNT TOOLS
+  // ============================================================
+
+  // Tool: shopify_list_discounts
+  server.tool(
+    "shopify_list_discounts",
+    "List all discount codes and automatic discounts.",
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number of discounts to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const discounts = await getDiscounts(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(discounts, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing discounts: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_discount
+  server.tool(
+    "shopify_create_discount",
+    "Create a discount code with percentage or fixed amount off.",
+    {
+      title: z.string().describe("Internal title for the discount"),
+      code: z.string().describe("The discount code customers will use (e.g. 'SAVE20')"),
+      percentOff: z.number().optional().describe("Percentage discount (e.g. 20 for 20% off)"),
+      amountOff: z.number().optional().describe("Fixed amount off (use instead of percentOff)"),
+      startsAt: z.string().optional().describe("Start date ISO string"),
+      endsAt: z.string().optional().describe("End date ISO string"),
+      usageLimit: z.number().optional().describe("Max number of times code can be used"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateDiscount] Creating discount: ${args.code}`
+        });
+        const discount = await createDiscountCode(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(discount, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating discount: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // FULFILLMENT TOOLS
+  // ============================================================
+
+  // Tool: shopify_get_fulfillments
+  server.tool(
+    "shopify_get_fulfillments",
+    "Get fulfillment status and tracking info for an order.",
+    {
+      orderId: z.string().describe("The order ID (e.g. gid://shopify/Order/123)"),
+    },
+    async ({ orderId }) => {
+      try {
+        const fulfillments = await getOrderFulfillments(orderId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(fulfillments, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting fulfillments: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_fulfillment
+  server.tool(
+    "shopify_create_fulfillment",
+    "Fulfill an order with optional tracking information.",
+    {
+      fulfillmentOrderId: z.string().describe("The fulfillment order ID (from get_fulfillments)"),
+      trackingNumber: z.string().optional().describe("Tracking number"),
+      trackingCompany: z.string().optional().describe("Carrier name (e.g. 'UPS', 'FedEx', 'USPS')"),
+      trackingUrl: z.string().optional().describe("Tracking URL"),
+      notifyCustomer: z.boolean().optional().default(true).describe("Send notification email"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateFulfillment] Fulfilling order: ${args.fulfillmentOrderId}`
+        });
+        const fulfillment = await createFulfillment(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Order fulfilled successfully!\n${JSON.stringify(fulfillment, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating fulfillment: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // SHOP INFO TOOL
+  // ============================================================
+
+  // Tool: shopify_get_shop_info
+  server.tool(
+    "shopify_get_shop_info",
+    "Get store information including name, domain, currency, plan, and settings.",
+    {},
+    async () => {
+      try {
+        const shop = await getShopInfo(session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(shop, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting shop info: ${error.message}`
           }]
         };
       }
