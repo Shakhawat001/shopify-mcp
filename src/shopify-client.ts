@@ -1,11 +1,7 @@
 import dotenv from 'dotenv';
-
 dotenv.config();
 
-const SHOPIFY_SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN;
-import "dotenv/config";
-
-const API_VERSION = "2024-01"; // Or 2026-01 as planned
+const API_VERSION = "2025-01";
 
 // Helper to get headers
 function getHeaders(accessToken?: string) {
@@ -96,9 +92,20 @@ export async function getRecentOrders(first = 5, shopDomain?: string, accessToke
               }
             }
             displayFulfillmentStatus
+            lineItems(first: 5) {
+              edges {
+                node {
+                  title
+                  quantity
+                }
+              }
+            }
+          }
+        }
+      }
     }
   `;
-  return shopifyGraphQL(query, { first });
+  return shopifyGraphQL(query, { first }, shopDomain, accessToken);
 }
 
 export async function createProduct(input: { title: string; description?: string; price?: string; status?: "ACTIVE" | "DRAFT" | "ARCHIVED" }, shopDomain?: string, accessToken?: string) {

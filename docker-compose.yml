@@ -8,9 +8,13 @@ services:
     ports:
       # Uncommon Port 38383
       - "${SERVER_PORT:-38383}:38383"
+    volumes:
+      # Persist session data across container restarts
+      - ./data:/app/data
     environment:
       # --- General ---
       PORT: 38383
+      DATA_DIR: /app/data
       
       # --- Security (Required for SSE/n8n) ---
       MCP_SERVER_TOKEN: ${MCP_SERVER_TOKEN}
@@ -27,3 +31,4 @@ services:
       timeout: 10s
       retries: 3
       start_period: 5s
+

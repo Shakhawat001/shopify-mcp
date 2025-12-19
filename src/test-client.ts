@@ -5,12 +5,18 @@ import dotenv from "dotenv";
 dotenv.config();
 
 async function main() {
-  // Hardcode for verification
-  const token = "D57EB815-C627-4AD9-A56E-929AC12D733D";
-  const shop = "batin-studio-dev-store.myshopify.com";
+  // Use environment variables for credentials
+  const token = process.env.TEST_API_KEY;
+  const shop = process.env.TEST_SHOP_DOMAIN;
+  const host = process.env.HOST || "https://shopifymcp.apps.batinstudio.com";
+  
+  if (!token || !shop) {
+    console.error("Missing TEST_API_KEY or TEST_SHOP_DOMAIN environment variables");
+    process.exit(1);
+  }
   
   // Use Query Params for Auth (Universal method)
-  const url = `https://shopifymcp.apps.batinstudio.com/sse?token=${token}&shop=${shop}`;
+  const url = `${host}/sse?token=${token}&shop=${shop}`;
 
   console.log(`Connecting to ${url}...`);
 
