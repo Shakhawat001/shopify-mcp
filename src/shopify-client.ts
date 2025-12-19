@@ -1298,3 +1298,689 @@ export async function getShopInfo(shopDomain?: string, accessToken?: string) {
   const data = await shopifyGraphQL(query, {}, shopDomain, accessToken);
   return data.shop;
 }
+
+// ============================================================
+// PRODUCT VARIANTS
+// ============================================================
+
+export async function getProductVariants(productId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetProductVariants($id: ID!) {
+      product(id: $id) {
+        id
+        title
+        options {
+          id
+          name
+          values
+        }
+        variants(first: 100) {
+          edges {
+            node {
+              id
+              title
+              sku
+              price
+              compareAtPrice
+              inventoryQuantity
+              selectedOptions {
+                name
+                value
+              }
+              image {
+                url
+              }
+              inventoryItem {
+                id
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { id: productId }, shopDomain, accessToken);
+  return data.product;
+}
+
+export async function createProductVariant(
+  input: { productId: string; options: string[]; price: string; sku?: string; inventoryQuantity?: number },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation productVariantCreate($input: ProductVariantInput!) {
+      productVariantCreate(input: $input) {
+        productVariant {
+          id
+          title
+          sku
+          price
+          inventoryQuantity
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables = {
+    input: {
+      productId: input.productId,
+      options: input.options,
+      price: input.price,
+      sku: input.sku,
+    }
+  };
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.productVariantCreate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.productVariantCreate.userErrors)}`);
+  }
+  
+  return data.productVariantCreate?.productVariant;
+}
+
+export async function updateProductVariant(
+  input: { variantId: string; price?: string; sku?: string; compareAtPrice?: string },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation productVariantUpdate($input: ProductVariantInput!) {
+      productVariantUpdate(input: $input) {
+        productVariant {
+          id
+          title
+          sku
+          price
+          compareAtPrice
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables = {
+    input: {
+      id: input.variantId,
+      price: input.price,
+      sku: input.sku,
+      compareAtPrice: input.compareAtPrice,
+    }
+  };
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.productVariantUpdate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.productVariantUpdate.userErrors)}`);
+  }
+  
+  return data.productVariantUpdate?.productVariant;
+}
+
+// ============================================================
+// METAFIELDS (Custom Data)
+// ============================================================
+
+export async function getMetafields(
+  ownerId: string, // e.g. gid://shopify/Product/123
+  namespace?: string,
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    query GetMetafields($ownerId: ID!, $namespace: String) {
+      node(id: $ownerId) {
+        ... on Product {
+          metafields(first: 50, namespace: $namespace) {
+            edges {
+              node {
+                id
+                namespace
+                key
+                value
+                type
+                description
+              }
+            }
+          }
+        }
+        ... on Customer {
+          metafields(first: 50, namespace: $namespace) {
+            edges {
+              node {
+                id
+                namespace
+                key
+                value
+                type
+              }
+            }
+          }
+        }
+        ... on Order {
+          metafields(first: 50, namespace: $namespace) {
+            edges {
+              node {
+                id
+                namespace
+                key
+                value
+                type
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await shopifyGraphQL(query, { ownerId, namespace: namespace || null }, shopDomain, accessToken);
+  return data.node;
+}
+
+export async function setMetafield(
+  input: { ownerId: string; namespace: string; key: string; value: string; type: string },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields {
+          id
+          namespace
+          key
+          value
+          type
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables = {
+    metafields: [{
+      ownerId: input.ownerId,
+      namespace: input.namespace,
+      key: input.key,
+      value: input.value,
+      type: input.type, // e.g. "single_line_text_field", "number_integer", "json"
+    }]
+  };
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.metafieldsSet?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.metafieldsSet.userErrors)}`);
+  }
+  
+  return data.metafieldsSet?.metafields;
+}
+
+export async function deleteMetafield(metafieldId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation metafieldDelete($input: MetafieldDeleteInput!) {
+      metafieldDelete(input: $input) {
+        deletedId
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { input: { id: metafieldId } }, shopDomain, accessToken);
+  
+  if (data.metafieldDelete?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.metafieldDelete.userErrors)}`);
+  }
+  
+  return { deletedId: data.metafieldDelete?.deletedId };
+}
+
+// ============================================================
+// ORDER MANAGEMENT
+// ============================================================
+
+export async function addOrderNote(orderId: string, note: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation orderUpdate($input: OrderInput!) {
+      orderUpdate(input: $input) {
+        order {
+          id
+          name
+          note
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { input: { id: orderId, note } }, shopDomain, accessToken);
+  
+  if (data.orderUpdate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.orderUpdate.userErrors)}`);
+  }
+  
+  return data.orderUpdate?.order;
+}
+
+export async function addOrderTags(orderId: string, tags: string[], shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation tagsAdd($id: ID!, $tags: [String!]!) {
+      tagsAdd(id: $id, tags: $tags) {
+        node {
+          ... on Order {
+            id
+            tags
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { id: orderId, tags }, shopDomain, accessToken);
+  
+  if (data.tagsAdd?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.tagsAdd.userErrors)}`);
+  }
+  
+  return data.tagsAdd?.node;
+}
+
+export async function cancelOrder(
+  orderId: string, 
+  reason?: string,
+  notifyCustomer?: boolean,
+  refund?: boolean,
+  restock?: boolean,
+  shopDomain?: string, 
+  accessToken?: string
+) {
+  const query = `
+    mutation orderCancel($orderId: ID!, $reason: OrderCancelReason!, $notifyCustomer: Boolean, $refund: Boolean, $restock: Boolean) {
+      orderCancel(orderId: $orderId, reason: $reason, notifyCustomer: $notifyCustomer, refund: $refund, restock: $restock) {
+        job {
+          id
+        }
+        orderCancelUserErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables = {
+    orderId,
+    reason: reason || "OTHER",
+    notifyCustomer: notifyCustomer ?? true,
+    refund: refund ?? true,
+    restock: restock ?? true,
+  };
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.orderCancel?.orderCancelUserErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.orderCancel.orderCancelUserErrors)}`);
+  }
+  
+  return { job: data.orderCancel?.job, success: true };
+}
+
+// ============================================================
+// REFUNDS
+// ============================================================
+
+export async function calculateRefund(orderId: string, shopDomain?: string, accessToken?: string) {
+  // Get order details to calculate refund
+  const query = `
+    query GetOrderForRefund($id: ID!) {
+      order(id: $id) {
+        id
+        name
+        totalPriceSet {
+          shopMoney {
+            amount
+          }
+        }
+        refundable
+        lineItems(first: 50) {
+          edges {
+            node {
+              id
+              title
+              quantity
+              refundableQuantity
+              originalUnitPriceSet {
+                shopMoney {
+                  amount
+                }
+              }
+            }
+          }
+        }
+        transactions(first: 10) {
+          id
+          kind
+          amountSet {
+            shopMoney {
+              amount
+            }
+          }
+        }
+      }
+    }
+  `;
+  
+  const data = await shopifyGraphQL(query, { id: orderId }, shopDomain, accessToken);
+  return data.order;
+}
+
+export async function createRefund(
+  input: { orderId: string; note?: string; notify?: boolean; refundLineItems?: { lineItemId: string; quantity: number }[] },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation refundCreate($input: RefundInput!) {
+      refundCreate(input: $input) {
+        refund {
+          id
+          note
+          createdAt
+          totalRefundedSet {
+            shopMoney {
+              amount
+            }
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const variables: any = {
+    input: {
+      orderId: input.orderId,
+      note: input.note,
+      notify: input.notify ?? true,
+    }
+  };
+
+  if (input.refundLineItems) {
+    variables.input.refundLineItems = input.refundLineItems.map(item => ({
+      lineItemId: item.lineItemId,
+      quantity: item.quantity,
+      restockType: "RETURN"
+    }));
+  }
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.refundCreate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.refundCreate.userErrors)}`);
+  }
+  
+  return data.refundCreate?.refund;
+}
+
+// ============================================================
+// DRAFT ORDERS (For B2B, Quotes, Manual Orders)
+// ============================================================
+
+export async function getDraftOrders(first = 20, shopDomain?: string, accessToken?: string) {
+  const query = `
+    query GetDraftOrders($first: Int!) {
+      draftOrders(first: $first, sortKey: UPDATED_AT, reverse: true) {
+        edges {
+          node {
+            id
+            name
+            status
+            createdAt
+            updatedAt
+            totalPriceSet {
+              shopMoney {
+                amount
+                currencyCode
+              }
+            }
+            customer {
+              id
+              firstName
+              lastName
+              email
+            }
+            lineItems(first: 10) {
+              edges {
+                node {
+                  title
+                  quantity
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+  return shopifyGraphQL(query, { first }, shopDomain, accessToken);
+}
+
+export async function createDraftOrder(
+  input: { 
+    customerId?: string;
+    email?: string;
+    note?: string;
+    tags?: string[];
+    lineItems: { variantId?: string; title?: string; quantity: number; originalUnitPrice?: string }[];
+  },
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation draftOrderCreate($input: DraftOrderInput!) {
+      draftOrderCreate(input: $input) {
+        draftOrder {
+          id
+          name
+          status
+          totalPriceSet {
+            shopMoney {
+              amount
+            }
+          }
+          invoiceUrl
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const lineItems = input.lineItems.map(item => {
+    if (item.variantId) {
+      return { variantId: item.variantId, quantity: item.quantity };
+    } else {
+      return { 
+        title: item.title || "Custom Item", 
+        quantity: item.quantity,
+        originalUnitPrice: item.originalUnitPrice || "0.00"
+      };
+    }
+  });
+
+  const variables: any = {
+    input: {
+      lineItems,
+      note: input.note,
+      tags: input.tags,
+    }
+  };
+
+  if (input.customerId) {
+    variables.input.customerId = input.customerId;
+  } else if (input.email) {
+    variables.input.email = input.email;
+  }
+
+  const data = await shopifyGraphQL(query, variables, shopDomain, accessToken);
+  
+  if (data.draftOrderCreate?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.draftOrderCreate.userErrors)}`);
+  }
+  
+  return data.draftOrderCreate?.draftOrder;
+}
+
+export async function completeDraftOrder(draftOrderId: string, paymentPending?: boolean, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation draftOrderComplete($id: ID!, $paymentPending: Boolean) {
+      draftOrderComplete(id: $id, paymentPending: $paymentPending) {
+        draftOrder {
+          id
+          status
+          order {
+            id
+            name
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { id: draftOrderId, paymentPending: paymentPending ?? false }, shopDomain, accessToken);
+  
+  if (data.draftOrderComplete?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.draftOrderComplete.userErrors)}`);
+  }
+  
+  return data.draftOrderComplete?.draftOrder;
+}
+
+export async function deleteDraftOrder(draftOrderId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation draftOrderDelete($input: DraftOrderDeleteInput!) {
+      draftOrderDelete(input: $input) {
+        deletedId
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { input: { id: draftOrderId } }, shopDomain, accessToken);
+  
+  if (data.draftOrderDelete?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.draftOrderDelete.userErrors)}`);
+  }
+  
+  return { deletedId: data.draftOrderDelete?.deletedId };
+}
+
+// ============================================================
+// DELETE OPERATIONS
+// ============================================================
+
+export async function deleteCollection(collectionId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation collectionDelete($input: CollectionDeleteInput!) {
+      collectionDelete(input: $input) {
+        deletedCollectionId
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { input: { id: collectionId } }, shopDomain, accessToken);
+  
+  if (data.collectionDelete?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.collectionDelete.userErrors)}`);
+  }
+  
+  return { deletedId: data.collectionDelete?.deletedCollectionId };
+}
+
+export async function deleteDiscount(discountId: string, shopDomain?: string, accessToken?: string) {
+  const query = `
+    mutation discountCodeDelete($id: ID!) {
+      discountCodeDelete(id: $id) {
+        deletedCodeDiscountId
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { id: discountId }, shopDomain, accessToken);
+  
+  if (data.discountCodeDelete?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.discountCodeDelete.userErrors)}`);
+  }
+  
+  return { deletedId: data.discountCodeDelete?.deletedCodeDiscountId };
+}
+
+export async function removeProductsFromCollection(
+  collectionId: string,
+  productIds: string[],
+  shopDomain?: string,
+  accessToken?: string
+) {
+  const query = `
+    mutation collectionRemoveProducts($id: ID!, $productIds: [ID!]!) {
+      collectionRemoveProducts(id: $id, productIds: $productIds) {
+        job {
+          id
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  `;
+
+  const data = await shopifyGraphQL(query, { id: collectionId, productIds }, shopDomain, accessToken);
+  
+  if (data.collectionRemoveProducts?.userErrors?.length > 0) {
+    throw new Error(`Shopify User Errors: ${JSON.stringify(data.collectionRemoveProducts.userErrors)}`);
+  }
+  
+  return { success: true, job: data.collectionRemoveProducts?.job };
+}

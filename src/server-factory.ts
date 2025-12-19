@@ -16,23 +16,51 @@ import {
   updateProduct,
   deleteProduct,
   getOrder,
-  // New capabilities
+  // Customers
   getCustomers,
   getCustomer,
   createCustomer,
   updateCustomer,
+  // Inventory
   getInventoryLevels,
   adjustInventory,
   getLocations,
+  // Collections
   getCollections,
   getCollection,
   createCollection,
   addProductsToCollection,
+  deleteCollection,
+  removeProductsFromCollection,
+  // Discounts
   getDiscounts,
   createDiscountCode,
+  deleteDiscount,
+  // Fulfillment
   getOrderFulfillments,
   createFulfillment,
-  getShopInfo
+  // Shop
+  getShopInfo,
+  // Enterprise: Variants
+  getProductVariants,
+  createProductVariant,
+  updateProductVariant,
+  // Enterprise: Metafields
+  getMetafields,
+  setMetafield,
+  deleteMetafield,
+  // Enterprise: Order Management
+  addOrderNote,
+  addOrderTags,
+  cancelOrder,
+  // Enterprise: Refunds
+  calculateRefund,
+  createRefund,
+  // Enterprise: Draft Orders
+  getDraftOrders,
+  createDraftOrder,
+  completeDraftOrder,
+  deleteDraftOrder,
 } from "./shopify-client.js";
 import { Session } from "@shopify/shopify-api";
 
@@ -1199,6 +1227,586 @@ export function createShopifyServer(session?: Session) {
           content: [{
             type: "text",
             text: `Error getting shop info: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // PRODUCT VARIANT TOOLS
+  // ============================================================
+
+  // Tool: shopify_get_variants
+  server.tool(
+    "shopify_get_variants",
+    "Get all variants (sizes, colors) for a product including prices and inventory.",
+    {
+      productId: z.string().describe("The product ID (e.g. gid://shopify/Product/123)"),
+    },
+    async ({ productId }) => {
+      try {
+        const variants = await getProductVariants(productId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(variants, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting variants: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_variant
+  server.tool(
+    "shopify_create_variant",
+    "Create a new product variant (e.g. new size or color option).",
+    {
+      productId: z.string().describe("The product ID"),
+      options: z.array(z.string()).describe("Option values (e.g. ['Large', 'Blue'])"),
+      price: z.string().describe("Price (e.g. '29.99')"),
+      sku: z.string().optional().describe("SKU code"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateVariant] Creating variant for: ${args.productId}`
+        });
+        const variant = await createProductVariant(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(variant, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating variant: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_update_variant
+  server.tool(
+    "shopify_update_variant",
+    "Update a variant's price, SKU, or compare-at price.",
+    {
+      variantId: z.string().describe("The variant ID (e.g. gid://shopify/ProductVariant/123)"),
+      price: z.string().optional().describe("New price"),
+      sku: z.string().optional().describe("New SKU"),
+      compareAtPrice: z.string().optional().describe("Original price (for showing discount)"),
+    },
+    async (args) => {
+      try {
+        const variant = await updateProductVariant(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(variant, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error updating variant: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // METAFIELD TOOLS (Custom Data)
+  // ============================================================
+
+  // Tool: shopify_get_metafields
+  server.tool(
+    "shopify_get_metafields",
+    "Get custom metafields for a product, customer, or order.",
+    {
+      ownerId: z.string().describe("The resource ID (e.g. gid://shopify/Product/123)"),
+      namespace: z.string().optional().describe("Filter by namespace"),
+    },
+    async ({ ownerId, namespace }) => {
+      try {
+        const metafields = await getMetafields(ownerId, namespace, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(metafields, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error getting metafields: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_set_metafield
+  server.tool(
+    "shopify_set_metafield",
+    "Set a custom metafield on a product, customer, or order.",
+    {
+      ownerId: z.string().describe("The resource ID (e.g. gid://shopify/Product/123)"),
+      namespace: z.string().describe("Namespace (e.g. 'custom', 'my_app')"),
+      key: z.string().describe("Key name (e.g. 'color', 'warranty_days')"),
+      value: z.string().describe("Value (for JSON, stringify first)"),
+      type: z.string().describe("Type: 'single_line_text_field', 'number_integer', 'json', 'boolean', etc."),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:SetMetafield] Setting ${args.namespace}.${args.key} on ${args.ownerId}`
+        });
+        const metafield = await setMetafield(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(metafield, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error setting metafield: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_delete_metafield
+  server.tool(
+    "shopify_delete_metafield",
+    "Delete a metafield.",
+    {
+      metafieldId: z.string().describe("The metafield ID to delete"),
+    },
+    async ({ metafieldId }) => {
+      try {
+        const result = await deleteMetafield(metafieldId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Metafield deleted. ID: ${result.deletedId}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting metafield: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // ORDER MANAGEMENT TOOLS
+  // ============================================================
+
+  // Tool: shopify_add_order_note
+  server.tool(
+    "shopify_add_order_note",
+    "Add or update an internal note on an order.",
+    {
+      orderId: z.string().describe("The order ID"),
+      note: z.string().describe("Note text"),
+    },
+    async ({ orderId, note }) => {
+      try {
+        const order = await addOrderNote(orderId, note, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(order, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adding note: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_add_order_tags
+  server.tool(
+    "shopify_add_order_tags",
+    "Add tags to an order for organization/filtering.",
+    {
+      orderId: z.string().describe("The order ID"),
+      tags: z.array(z.string()).describe("Tags to add (e.g. ['urgent', 'wholesale'])"),
+    },
+    async ({ orderId, tags }) => {
+      try {
+        const result = await addOrderTags(orderId, tags, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adding tags: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_cancel_order
+  server.tool(
+    "shopify_cancel_order",
+    "Cancel an order with options to refund and restock.",
+    {
+      orderId: z.string().describe("The order ID to cancel"),
+      reason: z.string().optional().describe("Reason: 'CUSTOMER', 'FRAUD', 'INVENTORY', 'DECLINED', 'OTHER'"),
+      notifyCustomer: z.boolean().optional().default(true).describe("Send cancellation email"),
+      refund: z.boolean().optional().default(true).describe("Issue refund"),
+      restock: z.boolean().optional().default(true).describe("Restock items"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "warning",
+          data: `[Tool:CancelOrder] Cancelling order: ${args.orderId}`
+        });
+        const result = await cancelOrder(
+          args.orderId,
+          args.reason,
+          args.notifyCustomer,
+          args.refund,
+          args.restock,
+          session?.shop,
+          session?.accessToken
+        );
+        return {
+          content: [{
+            type: "text",
+            text: `Order cancellation initiated.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error cancelling order: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // REFUND TOOLS
+  // ============================================================
+
+  // Tool: shopify_calculate_refund
+  server.tool(
+    "shopify_calculate_refund",
+    "Get refundable items and amounts for an order.",
+    {
+      orderId: z.string().describe("The order ID"),
+    },
+    async ({ orderId }) => {
+      try {
+        const refundInfo = await calculateRefund(orderId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(refundInfo, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error calculating refund: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_refund
+  server.tool(
+    "shopify_create_refund",
+    "Process a refund for an order.",
+    {
+      orderId: z.string().describe("The order ID"),
+      note: z.string().optional().describe("Refund note"),
+      notify: z.boolean().optional().default(true).describe("Notify customer"),
+      refundLineItems: z.array(z.object({
+        lineItemId: z.string(),
+        quantity: z.number()
+      })).optional().describe("Specific items to refund"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "warning",
+          data: `[Tool:CreateRefund] Processing refund for: ${args.orderId}`
+        });
+        const refund = await createRefund(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Refund processed.\n${JSON.stringify(refund, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating refund: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // DRAFT ORDER TOOLS (B2B / Quotes)
+  // ============================================================
+
+  // Tool: shopify_list_draft_orders
+  server.tool(
+    "shopify_list_draft_orders",
+    "List all draft orders (quotes, pending orders).",
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const drafts = await getDraftOrders(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(drafts, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing draft orders: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_create_draft_order
+  server.tool(
+    "shopify_create_draft_order",
+    "Create a draft order (quote) for a customer.",
+    {
+      email: z.string().optional().describe("Customer email"),
+      customerId: z.string().optional().describe("Existing customer ID"),
+      note: z.string().optional().describe("Order note"),
+      tags: z.array(z.string()).optional().describe("Tags"),
+      lineItems: z.array(z.object({
+        variantId: z.string().optional(),
+        title: z.string().optional(),
+        quantity: z.number(),
+        originalUnitPrice: z.string().optional()
+      })).describe("Items: use variantId for products, or title+price for custom items"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateDraftOrder] Creating draft for: ${args.email || args.customerId}`
+        });
+        const draft = await createDraftOrder(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(draft, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating draft order: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_complete_draft_order
+  server.tool(
+    "shopify_complete_draft_order",
+    "Convert a draft order to a real order.",
+    {
+      draftOrderId: z.string().describe("The draft order ID"),
+      paymentPending: z.boolean().optional().default(false).describe("Mark as payment pending"),
+    },
+    async ({ draftOrderId, paymentPending }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CompleteDraftOrder] Completing: ${draftOrderId}`
+        });
+        const result = await completeDraftOrder(draftOrderId, paymentPending, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Draft order completed!\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error completing draft: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_delete_draft_order
+  server.tool(
+    "shopify_delete_draft_order",
+    "Delete a draft order.",
+    {
+      draftOrderId: z.string().describe("The draft order ID to delete"),
+    },
+    async ({ draftOrderId }) => {
+      try {
+        const result = await deleteDraftOrder(draftOrderId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Draft order deleted. ID: ${result.deletedId}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting draft: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // DELETE OPERATION TOOLS
+  // ============================================================
+
+  // Tool: shopify_delete_collection
+  server.tool(
+    "shopify_delete_collection",
+    "Delete a collection permanently.",
+    {
+      collectionId: z.string().describe("The collection ID to delete"),
+    },
+    async ({ collectionId }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "warning",
+          data: `[Tool:DeleteCollection] Deleting: ${collectionId}`
+        });
+        const result = await deleteCollection(collectionId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Collection deleted. ID: ${result.deletedId}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting collection: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_delete_discount
+  server.tool(
+    "shopify_delete_discount",
+    "Delete a discount code.",
+    {
+      discountId: z.string().describe("The discount ID to delete"),
+    },
+    async ({ discountId }) => {
+      try {
+        const result = await deleteDiscount(discountId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Discount deleted. ID: ${result.deletedId}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting discount: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // Tool: shopify_remove_products_from_collection
+  server.tool(
+    "shopify_remove_products_from_collection",
+    "Remove products from a collection.",
+    {
+      collectionId: z.string().describe("The collection ID"),
+      productIds: z.array(z.string()).describe("Product IDs to remove"),
+    },
+    async ({ collectionId, productIds }) => {
+      try {
+        const result = await removeProductsFromCollection(collectionId, productIds, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Products removed from collection.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error removing products: ${error.message}`
           }]
         };
       }
