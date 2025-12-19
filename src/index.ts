@@ -578,13 +578,27 @@ async function startHttpServer() {
                                 This identifies which Shopify store to connect to. Use as X-Shopify-Domain header.
                             </small>
                         </div>
+                        
+                        <div class="credential-item" style="background: ${apiKey ? '#f1f8f5' : '#fff8e6'}; border-color: ${apiKey ? '#aee9d1' : '#ffea8a'};">
+                            <div class="credential-label">
+                                🔑 Your API Key (Required for n8n)
+                            </div>
+                            <div class="credential-value">
+                                <input type="password" class="credential-input" value="${apiKey || 'Not authenticated - complete OAuth first'}" readonly id="cred-apikey" style="font-family: monospace;">
+                                <button class="btn btn-secondary btn-sm" onclick="toggleApiKey()">Show</button>
+                                <button class="btn btn-secondary btn-sm" onclick="copyCredential('cred-apikey')">Copy</button>
+                            </div>
+                            <small style="color: var(--p-color-text-subdued); display: block; margin-top: 8px;">
+                                ${apiKey ? '✅ Your store is authenticated. Use this key as Bearer token in Authorization header.' : '⚠️ You need to complete OAuth first. <a href="/auth?shop=' + shop + '">Click here to authenticate</a>'}
+                            </small>
+                        </div>
                     </div>
                     
-                    <div class="info-box success" style="margin-top: 20px;">
-                        <div class="info-box-icon" style="background: #aee9d1; color: #0d5c2f; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">i</div>
+                    <div class="info-box ${apiKey ? 'success' : 'warning'}" style="margin-top: 20px;">
+                        <div class="info-box-icon" style="background: ${apiKey ? '#aee9d1' : '#ffea8a'}; color: ${apiKey ? '#0d5c2f' : '#8a6d00'}; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px;">${apiKey ? '✓' : '!'}</div>
                         <div class="info-box-content">
-                            <div class="info-box-title">OAuth Authentication</div>
-                            <div class="info-box-text">No API token needed! Your store is authenticated via OAuth. Just provide your shop domain in requests.</div>
+                            <div class="info-box-title">${apiKey ? 'Ready to Connect!' : 'Authentication Required'}</div>
+                            <div class="info-box-text">${apiKey ? 'Your store is authenticated. Copy your API key above and use it in your n8n MCP Client configuration.' : 'Complete OAuth to get your API key. This is required for n8n connection.'}</div>
                         </div>
                     </div>
                 </div>
@@ -1031,6 +1045,18 @@ async function startHttpServer() {
             
             function toggleToken() {
                 const el = document.getElementById('cred-token');
+                const btn = el.parentElement.querySelectorAll('button')[0];
+                if (el.type === 'password') {
+                    el.type = 'text';
+                    btn.innerText = 'Hide';
+                } else {
+                    el.type = 'password';
+                    btn.innerText = 'Show';
+                }
+            }
+            
+            function toggleApiKey() {
+                const el = document.getElementById('cred-apikey');
                 const btn = el.parentElement.querySelectorAll('button')[0];
                 if (el.type === 'password') {
                     el.type = 'text';
