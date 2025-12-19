@@ -61,6 +61,42 @@ import {
   createDraftOrder,
   completeDraftOrder,
   deleteDraftOrder,
+  // ADVANCED: Bulk Operations
+  bulkCreateProductVariants,
+  bulkUpdateProductVariants,
+  bulkAdjustInventory,
+  // ADVANCED: Order Creation & Editing
+  createOrder,
+  beginOrderEdit,
+  addLineItemToOrderEdit,
+  commitOrderEdit,
+  // ADVANCED: Gift Cards
+  getGiftCards,
+  createGiftCard,
+  disableGiftCard,
+  // ADVANCED: Webhooks
+  getWebhooks,
+  createWebhook,
+  deleteWebhook,
+  // ADVANCED: Files/Media
+  getFiles,
+  createFileFromUrl,
+  deleteFile,
+  // ADVANCED: Search
+  searchProducts,
+  searchCustomers,
+  // ADVANCED: Price Rules
+  getPriceRules,
+  // ADVANCED: Tags
+  addProductTags,
+  removeProductTags,
+  // ADVANCED: International
+  getMarkets,
+  getDeliveryProfiles,
+  // ADVANCED: Abandoned Checkouts
+  getAbandonedCheckouts,
+  // ADVANCED: Store Credit
+  getStoreCreditAccounts,
 } from "./shopify-client.js";
 import { Session } from "@shopify/shopify-api";
 
@@ -1807,6 +1843,920 @@ export function createShopifyServer(session?: Session) {
           content: [{
             type: "text",
             text: `Error removing products: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // BULK VARIANT OPERATIONS
+  // These tools let you create or update MULTIPLE product variants at once.
+  // Use these when you need to add many sizes/colors/options efficiently.
+  // ============================================================
+
+  server.tool(
+    "shopify_bulk_create_variants",
+    `Create MULTIPLE product variants at once. 
+    
+USE THIS WHEN: You need to add many sizes, colors, or options to a product efficiently.
+EXAMPLE: Adding S, M, L, XL sizes to a t-shirt product in one call.
+
+IMPORTANT: Each variant needs option values matching the product's options.
+For a product with "Size" and "Color" options, provide options like ["Large", "Blue"].`,
+    {
+      productId: z.string().describe("The product ID to add variants to (e.g., gid://shopify/Product/123)"),
+      variants: z.array(z.object({
+        options: z.array(z.string()).describe("Option values for this variant (e.g., ['Large', 'Blue'])"),
+        price: z.string().describe("Price as string (e.g., '29.99')"),
+        sku: z.string().optional().describe("Stock Keeping Unit code"),
+        barcode: z.string().optional().describe("Barcode/UPC"),
+      })).describe("Array of variants to create"),
+    },
+    async ({ productId, variants }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:BulkCreateVariants] Creating ${variants.length} variants for: ${productId}`
+        });
+        const result = await bulkCreateProductVariants(productId, variants, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Created ${result?.length || 0} variants successfully.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating variants: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_bulk_update_variants",
+    `Update MULTIPLE product variants at once.
+
+USE THIS WHEN: You need to change prices, SKUs, or compare-at prices for many variants.
+EXAMPLE: Updating all variant prices for a seasonal sale.
+
+IMPORTANT: You must provide the variant IDs (not product ID) for each variant to update.`,
+    {
+      productId: z.string().describe("The product ID these variants belong to"),
+      variants: z.array(z.object({
+        id: z.string().describe("The variant ID to update (e.g., gid://shopify/ProductVariant/123)"),
+        price: z.string().optional().describe("New price as string"),
+        sku: z.string().optional().describe("New SKU"),
+        compareAtPrice: z.string().optional().describe("Original price to show discount (e.g., '49.99' crossed out)"),
+      })).describe("Array of variants to update"),
+    },
+    async ({ productId, variants }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:BulkUpdateVariants] Updating ${variants.length} variants`
+        });
+        const result = await bulkUpdateProductVariants(productId, variants, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Updated ${result?.length || 0} variants successfully.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error updating variants: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_bulk_adjust_inventory",
+    `Adjust inventory for MULTIPLE items at once.
+
+USE THIS WHEN: You need to update stock levels for many products efficiently.
+EXAMPLE: After receiving a shipment, add inventory for multiple items.
+
+IMPORTANT: You need inventoryItemId (from shopify_get_inventory) and locationId (from shopify_get_locations).`,
+    {
+      adjustments: z.array(z.object({
+        inventoryItemId: z.string().describe("The inventory item ID (get from shopify_get_inventory)"),
+        locationId: z.string().describe("The location ID (get from shopify_get_locations)"),
+        delta: z.number().describe("Quantity change: positive to add, negative to remove (e.g., +50 or -10)"),
+      })).describe("Array of inventory adjustments"),
+      reason: z.string().optional().default("other").describe("Reason: 'correction', 'received', 'damaged', 'other'"),
+    },
+    async ({ adjustments, reason }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:BulkAdjustInventory] Adjusting ${adjustments.length} items`
+        });
+        const result = await bulkAdjustInventory(adjustments, reason, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Inventory adjusted for ${adjustments.length} items.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adjusting inventory: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // ORDER CREATION & EDITING
+  // These tools let you create orders programmatically and edit existing orders.
+  // Use for wholesale, imports, POS, or modifying orders after placement.
+  // ============================================================
+
+  server.tool(
+    "shopify_create_order",
+    `Create a new order programmatically WITHOUT going through checkout.
+
+USE THIS WHEN: 
+- Importing orders from another system
+- Creating wholesale/B2B orders
+- Building a custom POS
+- Creating orders on behalf of customers
+
+IMPORTANT: This creates a real order. The customer can be notified via sendReceipt option.`,
+    {
+      email: z.string().optional().describe("Customer email address"),
+      phone: z.string().optional().describe("Customer phone number"),
+      lineItems: z.array(z.object({
+        variantId: z.string().describe("The variant ID to add (e.g., gid://shopify/ProductVariant/123)"),
+        quantity: z.number().describe("Quantity to order"),
+      })).describe("Products to include in the order"),
+      shippingAddress: z.object({
+        firstName: z.string(),
+        lastName: z.string(),
+        address1: z.string(),
+        city: z.string(),
+        province: z.string().optional(),
+        country: z.string(),
+        zip: z.string(),
+      }).optional().describe("Shipping address for the order"),
+      note: z.string().optional().describe("Internal order note"),
+      tags: z.array(z.string()).optional().describe("Tags for the order"),
+      sendReceipt: z.boolean().optional().default(false).describe("Email order confirmation to customer"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateOrder] Creating order for: ${args.email || args.phone || 'unknown'}`
+        });
+        const order = await createOrder(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Order created successfully!\n${JSON.stringify(order, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating order: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_begin_order_edit",
+    `Start editing an existing order to add/remove items.
+
+USE THIS WHEN: You need to modify an order after it was placed.
+This is STEP 1 of a 3-step process:
+1. Begin edit (this tool) - returns a calculatedOrderId
+2. Make changes using shopify_add_line_item_to_order_edit
+3. Commit changes using shopify_commit_order_edit
+
+IMPORTANT: Save the calculatedOrderId from the response for the next steps.`,
+    {
+      orderId: z.string().describe("The order ID to edit (e.g., gid://shopify/Order/123)"),
+    },
+    async ({ orderId }) => {
+      try {
+        const calculated = await beginOrderEdit(orderId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Order edit session started. Use the calculatedOrder.id for next steps:\n${JSON.stringify(calculated, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error starting order edit: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_add_line_item_to_order_edit",
+    `Add a product to an order being edited.
+
+USE THIS WHEN: You're in the middle of editing an order (after shopify_begin_order_edit).
+This is STEP 2 of a 3-step process.
+
+IMPORTANT: Use the calculatedOrderId from shopify_begin_order_edit, NOT the original order ID.`,
+    {
+      calculatedOrderId: z.string().describe("The calculated order ID from shopify_begin_order_edit"),
+      variantId: z.string().describe("The variant to add (e.g., gid://shopify/ProductVariant/123)"),
+      quantity: z.number().describe("Quantity to add"),
+    },
+    async ({ calculatedOrderId, variantId, quantity }) => {
+      try {
+        const result = await addLineItemToOrderEdit(calculatedOrderId, variantId, quantity, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Line item added to order edit.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adding line item: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_commit_order_edit",
+    `Finalize and save order edits.
+
+USE THIS WHEN: You've finished making changes to an order and want to apply them.
+This is STEP 3 (final step) of the order editing process.
+
+IMPORTANT: This permanently applies all changes made during the edit session.`,
+    {
+      calculatedOrderId: z.string().describe("The calculated order ID from the edit session"),
+      notifyCustomer: z.boolean().optional().default(true).describe("Send update email to customer"),
+    },
+    async ({ calculatedOrderId, notifyCustomer }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CommitOrderEdit] Committing changes: ${calculatedOrderId}`
+        });
+        const order = await commitOrderEdit(calculatedOrderId, notifyCustomer, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Order edit committed successfully!\n${JSON.stringify(order, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error committing order edit: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // GIFT CARDS
+  // Manage store gift cards - create, list, disable.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_gift_cards",
+    `List all gift cards in the store.
+
+Shows: balance, initial value, expiration, status, and associated customer.
+USE THIS WHEN: You need to see all active gift cards or find a specific one.`,
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number of gift cards to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const giftCards = await getGiftCards(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(giftCards, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing gift cards: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_create_gift_card",
+    `Create a new gift card.
+
+USE THIS WHEN: Creating gift cards for promotions, customer rewards, or refund alternatives.
+
+IMPORTANT: The gift card CODE is only shown ONCE in the response. Save it immediately!
+The code is what customers use at checkout.`,
+    {
+      initialValue: z.string().describe("Gift card value (e.g., '50.00')"),
+      note: z.string().optional().describe("Internal note about the gift card"),
+      expiresOn: z.string().optional().describe("Expiration date (ISO format: 2025-12-31)"),
+      customerId: z.string().optional().describe("Associate with a customer (optional)"),
+    },
+    async (args) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateGiftCard] Creating gift card: $${args.initialValue}`
+        });
+        const result = await createGiftCard(args, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Gift card created! SAVE THIS CODE (only shown once):\n\nCODE: ${result.giftCardCode}\n\nDetails:\n${JSON.stringify(result.giftCard, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating gift card: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_disable_gift_card",
+    `Disable a gift card so it can no longer be used.
+
+USE THIS WHEN: A gift card was issued in error, suspected fraud, or needs to be revoked.
+NOTE: This doesn't delete the card, just prevents it from being used at checkout.`,
+    {
+      giftCardId: z.string().describe("The gift card ID to disable"),
+    },
+    async ({ giftCardId }) => {
+      try {
+        const result = await disableGiftCard(giftCardId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Gift card disabled successfully.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error disabling gift card: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // WEBHOOKS
+  // Register callbacks for store events. Essential for integrations.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_webhooks",
+    `List all registered webhooks for the store.
+
+Shows: topic (event type), callback URL, format, and creation date.
+USE THIS WHEN: Checking what integrations are connected or debugging webhook issues.`,
+    {},
+    async () => {
+      try {
+        const webhooks = await getWebhooks(50, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(webhooks, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing webhooks: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_create_webhook",
+    `Register a new webhook to receive event notifications.
+
+USE THIS WHEN: Setting up integrations that need to react to store events.
+
+COMMON TOPICS:
+- ORDERS_CREATE - New order placed
+- ORDERS_PAID - Order payment received
+- ORDERS_FULFILLED - Order shipped
+- PRODUCTS_CREATE, PRODUCTS_UPDATE, PRODUCTS_DELETE
+- CUSTOMERS_CREATE, CUSTOMERS_UPDATE
+- INVENTORY_LEVELS_UPDATE
+- CHECKOUTS_CREATE, CHECKOUTS_UPDATE`,
+    {
+      topic: z.string().describe("Event topic (e.g., 'ORDERS_CREATE', 'PRODUCTS_UPDATE')"),
+      callbackUrl: z.string().describe("HTTPS URL to receive webhook data"),
+    },
+    async ({ topic, callbackUrl }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:CreateWebhook] Registering webhook: ${topic} -> ${callbackUrl}`
+        });
+        const webhook = await createWebhook(topic, callbackUrl, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Webhook registered successfully!\n${JSON.stringify(webhook, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error creating webhook: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_delete_webhook",
+    `Delete a webhook subscription.
+
+USE THIS WHEN: Removing an integration or cleaning up unused webhooks.`,
+    {
+      webhookId: z.string().describe("The webhook subscription ID to delete"),
+    },
+    async ({ webhookId }) => {
+      try {
+        const result = await deleteWebhook(webhookId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Webhook deleted. ID: ${result.deletedId}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting webhook: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // FILES / MEDIA
+  // Upload and manage store media files.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_files",
+    `List files/media in the store's file library.
+
+Shows: images, videos, and generic files with URLs and metadata.
+USE THIS WHEN: Finding existing media or checking what files are uploaded.`,
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number of files to return"),
+      query: z.string().optional().describe("Search query to filter files"),
+    },
+    async ({ limit, query }) => {
+      try {
+        const files = await getFiles(limit, query, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(files, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing files: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_upload_file",
+    `Upload a file to Shopify from a URL.
+
+USE THIS WHEN: Adding images for products, blog posts, or general store assets.
+The file is copied from the provided URL to Shopify's CDN.
+
+IMPORTANT: The URL must be publicly accessible for Shopify to fetch it.`,
+    {
+      url: z.string().describe("Public URL of the file to upload"),
+      altText: z.string().optional().describe("Alt text for accessibility (for images)"),
+    },
+    async ({ url, altText }) => {
+      try {
+        server.sendLoggingMessage({
+          level: "info",
+          data: `[Tool:UploadFile] Uploading from: ${url}`
+        });
+        const files = await createFileFromUrl(url, altText, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `File uploaded successfully!\n${JSON.stringify(files, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error uploading file: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_delete_file",
+    `Delete a file from Shopify.
+
+USE THIS WHEN: Removing unused media to clean up the file library.
+NOTE: If the file is used by a product or page, it may break those references.`,
+    {
+      fileId: z.string().describe("The file ID to delete"),
+    },
+    async ({ fileId }) => {
+      try {
+        const result = await deleteFile(fileId, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `File deleted. IDs: ${result.deletedIds?.join(', ')}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting file: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // SEARCH
+  // Powerful search tools for products and customers.
+  // ============================================================
+
+  server.tool(
+    "shopify_search_products",
+    `Search products with filters.
+
+USE THIS WHEN: Finding products by title, vendor, type, status, or any attribute.
+
+QUERY EXAMPLES:
+- "title:blue shirt" - Find products with "blue shirt" in title
+- "vendor:Nike" - Find all Nike products  
+- "status:ACTIVE" - Find only active products
+- "inventory_total:<10" - Low stock products
+- "created_at:>2024-01-01" - Products created after date
+- "tag:sale" - Products with 'sale' tag`,
+    {
+      query: z.string().describe("Search query with filters"),
+      limit: z.number().min(1).max(50).default(20).describe("Number of results"),
+    },
+    async ({ query, limit }) => {
+      try {
+        const results = await searchProducts(query, limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(results, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error searching products: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_search_customers",
+    `Search customers with filters.
+
+USE THIS WHEN: Finding customers by email, name, orders, spend, or tags.
+
+QUERY EXAMPLES:
+- "email:john@example.com" - Find by email
+- "first_name:John" - Find by first name
+- "orders_count:>5" - Customers with many orders
+- "total_spent:>1000" - High-value customers
+- "tag:vip" - VIP customers
+- "created_at:>2024-01-01" - New customers`,
+    {
+      query: z.string().describe("Search query with filters"),
+      limit: z.number().min(1).max(50).default(20).describe("Number of results"),
+    },
+    async ({ query, limit }) => {
+      try {
+        const results = await searchCustomers(query, limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(results, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error searching customers: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // PRICE RULES
+  // View automatic discounts and price rules.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_price_rules",
+    `List all price rules (automatic discounts).
+
+Shows: title, status, value (percentage or fixed), dates, usage limits.
+USE THIS WHEN: Reviewing active promotions or checking discount rules.
+NOTE: Price rules are different from discount CODES (use shopify_list_discounts for codes).`,
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number of rules to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const rules = await getPriceRules(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(rules, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing price rules: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // PRODUCT TAGS
+  // Add or remove tags from products for organization.
+  // ============================================================
+
+  server.tool(
+    "shopify_add_product_tags",
+    `Add tags to a product.
+
+USE THIS WHEN: Organizing products for collections, filtering, or marketing.
+Tags are useful for: seasonal items ('summer', 'holiday'), status ('new', 'clearance'), 
+attributes ('organic', 'vegan'), or internal organization ('featured', 'homepage').`,
+    {
+      productId: z.string().describe("The product ID"),
+      tags: z.array(z.string()).describe("Tags to add (e.g., ['sale', 'featured', 'new-arrival'])"),
+    },
+    async ({ productId, tags }) => {
+      try {
+        const result = await addProductTags(productId, tags, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Tags added successfully.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adding tags: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "shopify_remove_product_tags",
+    `Remove tags from a product.
+
+USE THIS WHEN: A promotion ends, product status changes, or cleaning up organization.`,
+    {
+      productId: z.string().describe("The product ID"),
+      tags: z.array(z.string()).describe("Tags to remove"),
+    },
+    async ({ productId, tags }) => {
+      try {
+        const result = await removeProductTags(productId, tags, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: `Tags removed successfully.\n${JSON.stringify(result, null, 2)}`
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error removing tags: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // INTERNATIONAL / MARKETS
+  // View international selling configuration.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_markets",
+    `List all markets (international selling regions).
+
+Shows: market name, enabled status, countries, and currency settings.
+USE THIS WHEN: Understanding international pricing or checking market configuration.
+Markets control: pricing, currency, languages, and shipping for different regions.`,
+    {},
+    async () => {
+      try {
+        const markets = await getMarkets(session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(markets, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing markets: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // SHIPPING PROFILES
+  // View shipping zones and rates.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_shipping_profiles",
+    `List delivery/shipping profiles, zones, and rates.
+
+Shows: shipping zones, countries, and rate definitions.
+USE THIS WHEN: Understanding shipping configuration or checking rates.
+
+NOTE: This shows read-only information. Shipping rate creation requires Shopify admin.`,
+    {},
+    async () => {
+      try {
+        const profiles = await getDeliveryProfiles(session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(profiles, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing shipping profiles: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // ABANDONED CHECKOUTS
+  // View checkouts that didn't complete.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_abandoned_checkouts",
+    `List abandoned checkouts (customers who didn't complete purchase).
+
+Shows: cart value, customer info, items, and creation date.
+USE THIS WHEN: Analyzing cart abandonment, planning recovery campaigns, or understanding lost sales.
+
+TIP: Use this data to send recovery emails or identify checkout friction points.`,
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number of checkouts to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const checkouts = await getAbandonedCheckouts(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(checkouts, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing abandoned checkouts: ${error.message}`
+          }]
+        };
+      }
+    }
+  );
+
+  // ============================================================
+  // STORE CREDIT
+  // View customers with store credit.
+  // ============================================================
+
+  server.tool(
+    "shopify_list_store_credits",
+    `List customers who have store credit balances.
+
+Shows: customer info and credit balance.
+USE THIS WHEN: Checking store credit usage or finding customers with credit to spend.
+
+NOTE: Store credit is different from gift cards - it's usually issued as refund alternatives.`,
+    {
+      limit: z.number().min(1).max(50).default(20).describe("Number of customers to return"),
+    },
+    async ({ limit }) => {
+      try {
+        const accounts = await getStoreCreditAccounts(limit, session?.shop, session?.accessToken);
+        return {
+          content: [{
+            type: "text",
+            text: JSON.stringify(accounts, null, 2)
+          }]
+        };
+      } catch (error: any) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing store credits: ${error.message}`
           }]
         };
       }
