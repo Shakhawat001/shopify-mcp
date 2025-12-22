@@ -219,38 +219,6 @@ export function createShopifyServer(session?: Session) {
     }
   );
 
-  // Tool: shopify_search_products
-  server.tool(
-    "shopify_search_products",
-    "Search or list products from the store. useful for finding product IDs to update or checking inventory levels.",
-    {
-      limit: z.number().min(1).max(50).default(5).describe("Number of products to return"),
-    },
-    async ({ limit }) => {
-      try {
-        const products = await getProducts(
-            limit,
-            session?.shop, 
-            session?.accessToken
-        );
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify(products, null, 2)
-          }]
-        };
-      } catch (error: any) {
-        server.sendLoggingMessage({ level: "error", data: `Error searching products: ${error.message}` });
-        return {
-          content: [{
-            type: "text",
-            text: `Error: ${error.message}`
-          }]
-        };
-      }
-    }
-  );
-
   // Tool: trigger_n8n_workflow
   server.tool(
     "trigger_n8n_workflow",
