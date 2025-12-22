@@ -10,6 +10,7 @@ import '@shopify/shopify-api/adapters/node';
 import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 import { sessionStorage } from "./session-storage.js";
 import { renderDashboard } from "./templates/dashboard.js";
+import { renderNewDashboard } from "./templates/dashboard-new.js";
 import { renderPrivacyPolicy, renderTermsOfService } from "./templates/legal.js";
 import { authMiddleware, cspMiddleware } from "./middleware/auth.js";
 import { createProSubscription, getCurrentSubscription, PRICING, formatPrice } from "./billing/billing.js";
@@ -75,23 +76,33 @@ async function startHttpServer() {
     const host = process.env.HOST || 'https://your-server.com';
     
 
-    // Fetch API key for this shop if they've completed OAuth
+    // Fetch session and usage stats for this shop
     let apiKey = '';
     let isAuthorized = false;
+    let usageCount = 0;
+    let usageLimit = 200;
+    let plan: 'free' | 'pro' = 'free';
+    
     if (shop) {
       const storedSession = await sessionStorage.findSessionByShop(shop);
       if (storedSession) {
         apiKey = storedSession.apiKey;
         isAuthorized = true;
+        plan = storedSession.plan || 'free';
+        usageCount = storedSession.usageCount || 0;
+        usageLimit = plan === 'pro' ? -1 : 200;
       }
     }
     
-    // Use extracted template
-    const html = renderDashboard({
+    // Use new simplified dashboard
+    const html = renderNewDashboard({
       host,
       shop: shop || null,
       apiKey,
-      isAuthorized
+      isAuthorized,
+      usageCount,
+      usageLimit,
+      plan
     });
     
     res.send(html);
