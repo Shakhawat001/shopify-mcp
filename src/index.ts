@@ -10,8 +10,7 @@ import '@shopify/shopify-api/adapters/node';
 import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 import { sessionStorage } from "./session-storage.js";
 import { renderDashboard } from "./templates/dashboard.js";
-
-
+import { authMiddleware, cspMiddleware } from "./middleware/auth.js";
 // Check for Stdio mode (Default for local dev)
 if (process.argv.includes("--stdio")) {
   startStdioServer();
@@ -46,59 +45,8 @@ async function startHttpServer() {
     isEmbeddedApp: false,
   });
 
-  // API Key Auth Middleware
-  // Authenticates MCP requests using per-store API keys
-  const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    // Allow Auth handshake routes to pass
-    if (req.path.startsWith("/auth")) {
-      return next();
-    }
-    
-    // Allow public endpoints
-    if (req.path === "/" || req.path === "/health" || req.path === "/debug") {
-      return next();
-    }
-
-    // Extract API key from Authorization header
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log(`[Auth] Missing or invalid Authorization header. Path: ${req.path}`);
-      return res.status(401).json({ 
-        error: "Missing API key",
-        hint: "Provide Authorization: Bearer <your-api-key> header"
-      });
-    }
-
-    const apiKey = authHeader.substring(7); // Remove "Bearer " prefix
-    
-    // Find session by API key
-    const session = await sessionStorage.findSessionByApiKey(apiKey);
-    
-    if (!session) {
-      console.log(`[Auth] Invalid API key: ${apiKey.substring(0, 12)}...`);
-      return res.status(401).json({ 
-        error: "Invalid API key",
-        hint: "Check your API key or reinstall the app"
-      });
-    }
-
-    // Attach session to request for later use
-    (req as any).shopifySession = session;
-    console.log(`[Auth] Authenticated via API key for: ${session.shop}`);
-    next();
-  };
-
-  // CSP Middleware for Embedded App Support
-  app.use((req, res, next) => {
-    // specific valid shopify domains for frame-ancestors
-    // We allow admin.shopify.com and any myshopify.com domain
-    res.setHeader(
-      "Content-Security-Policy", 
-      "frame-ancestors https://admin.shopify.com https://*.myshopify.com;"
-    );
-    next();
-  });
-
+  // Use extracted middleware
+  app.use(cspMiddleware);
   app.use(cors());
   
   // JSON body parser - EXCLUDE /mcp and /sse endpoints

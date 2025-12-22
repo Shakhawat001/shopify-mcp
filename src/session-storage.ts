@@ -4,7 +4,7 @@ import { dirname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 
 // Extended session data with API key for MCP authentication
-interface StoredSession {
+export interface StoredSession {
   id: string;
   shop: string;
   accessToken: string;
