@@ -62,6 +62,29 @@ export const authMiddleware = async (
   // Attach session to request for later use
   req.shopifySession = session;
   console.log(`[Auth] Authenticated via API key for: ${session.shop}`);
+  
+  // Usage tracking for MCP endpoints (count each connection/request)
+  const mcpPaths = ['/sse', '/mcp', '/message'];
+  if (mcpPaths.includes(req.path)) {
+    const usage = await sessionStorage.incrementUsage(session.shop);
+    
+    if (!usage.allowed) {
+      console.log(`[Billing] Free tier limit reached for ${session.shop}. Usage: ${usage.count}/${usage.limit}`);
+      return res.status(402).json({
+        error: "Usage limit reached",
+        message: `You've used ${usage.count} of ${usage.limit} free tool calls this month.`,
+        upgrade: {
+          url: `/billing/subscribe?shop=${session.shop}`,
+          plan: "Pro",
+          price: "$6.99/mo (30% launch discount)",
+          benefits: "Unlimited tool calls"
+        }
+      });
+    }
+    
+    console.log(`[Billing] Usage for ${session.shop}: ${usage.count}/${usage.limit === -1 ? 'unlimited' : usage.limit}`);
+  }
+  
   next();
 };
 
