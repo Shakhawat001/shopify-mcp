@@ -10,8 +10,10 @@ import '@shopify/shopify-api/adapters/node';
 import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 import { sessionStorage } from "./session-storage.js";
 import { renderDashboard } from "./templates/dashboard.js";
+import { renderPrivacyPolicy, renderTermsOfService } from "./templates/legal.js";
 import { authMiddleware, cspMiddleware } from "./middleware/auth.js";
 import { createProSubscription, getCurrentSubscription, PRICING, formatPrice } from "./billing/billing.js";
+import { registerGDPRWebhooks } from "./webhooks/gdpr.js";
 
 // Check for Stdio mode (Default for local dev)
 if (process.argv.includes("--stdio")) {
@@ -51,14 +53,18 @@ async function startHttpServer() {
   app.use(cspMiddleware);
   app.use(cors());
   
-  // JSON body parser - EXCLUDE /mcp and /sse endpoints
+  // JSON body parser - EXCLUDE /mcp, /sse, and /webhooks endpoints
   // The MCP transports need to read raw body stream directly
+  // Webhooks use their own raw body parser for HMAC verification
   app.use((req, res, next) => {
-    if (req.path === '/mcp' || req.path === '/sse' || req.path === '/message') {
-      return next(); // Skip JSON parsing for MCP endpoints
+    if (req.path === '/mcp' || req.path === '/sse' || req.path === '/message' || req.path.startsWith('/webhooks')) {
+      return next(); // Skip JSON parsing
     }
     express.json()(req, res, next);
   });
+
+  // Register GDPR and app lifecycle webhooks (mandatory for App Store)
+  registerGDPRWebhooks(app);
 
   // Store active transports by SessionID
   const transports = new Map<string, SSEServerTransport>();
@@ -212,6 +218,15 @@ async function startHttpServer() {
     }
   });
   // END BILLING ROUTES
+
+  // Legal Pages (required for App Store)
+  app.get("/privacy", (req, res) => {
+    res.send(renderPrivacyPolicy());
+  });
+
+  app.get("/terms", (req, res) => {
+    res.send(renderTermsOfService());
+  });
 
   app.get("/health", (req, res) => {
     res.json({ status: "ok", mode: "http", clients: transports.size });

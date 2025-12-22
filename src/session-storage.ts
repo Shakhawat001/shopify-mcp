@@ -214,6 +214,19 @@ export class FileSessionStorage {
       resetDate: session.usageResetDate,
     };
   }
+
+  // Delete session by shop (for GDPR shop/redact)
+  async deleteSessionByShop(shop: string): Promise<boolean> {
+    const session = Object.values(this.sessions).find(s => s.shop === shop);
+    if (!session) {
+      return false;
+    }
+    
+    delete this.sessions[session.id];
+    this.saveToFile();
+    console.log(`[SessionStorage] Deleted session for ${shop}`);
+    return true;
+  }
 }
 
 export const sessionStorage = new FileSessionStorage();
