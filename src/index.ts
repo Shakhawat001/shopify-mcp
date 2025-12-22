@@ -11,6 +11,8 @@ import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 import { sessionStorage } from "./session-storage.js";
 import { renderDashboard } from "./templates/dashboard.js";
 import { authMiddleware, cspMiddleware } from "./middleware/auth.js";
+import { createProSubscription, getCurrentSubscription, PRICING, formatPrice } from "./billing/billing.js";
+
 // Check for Stdio mode (Default for local dev)
 if (process.argv.includes("--stdio")) {
   startStdioServer();
@@ -122,6 +124,94 @@ async function startHttpServer() {
     }
   });
   // END OAUTH ROUTES
+
+  // START BILLING ROUTES
+  app.get("/billing", async (req, res) => {
+    const shop = req.query.shop as string;
+    if (!shop) {
+      return res.status(400).json({ error: "Missing shop parameter" });
+    }
+
+    const stats = await sessionStorage.getUsageStats(shop);
+    if (!stats) {
+      return res.status(404).json({ error: "Shop not found. Complete OAuth first." });
+    }
+
+    const session = await sessionStorage.findSessionByShop(shop);
+    
+    res.json({
+      plan: stats.plan,
+      displayName: stats.plan === 'pro' ? 'Pro' : 'Free',
+      price: stats.plan === 'pro' ? formatPrice('pro') : 'Free',
+      usage: {
+        current: stats.usageCount,
+        limit: stats.limit === -1 ? 'Unlimited' : stats.limit,
+        resetDate: stats.resetDate,
+      },
+      upgrade: stats.plan === 'free' ? {
+        available: true,
+        url: `/billing/subscribe?shop=${shop}`,
+        price: formatPrice('pro'),
+      } : null,
+    });
+  });
+
+  app.get("/billing/subscribe", async (req, res) => {
+    const shop = req.query.shop as string;
+    if (!shop) {
+      return res.status(400).json({ error: "Missing shop parameter" });
+    }
+
+    const session = await sessionStorage.findSessionByShop(shop);
+    if (!session) {
+      return res.status(404).json({ error: "Shop not found. Complete OAuth first." });
+    }
+
+    const host = process.env.HOST || '';
+    const returnUrl = `${host}/billing/callback?shop=${shop}`;
+    
+    const result = await createProSubscription(shop, session.accessToken, returnUrl);
+    
+    if (!result) {
+      return res.status(500).json({ error: "Failed to create subscription" });
+    }
+
+    // Redirect merchant to Shopify to approve charge
+    console.log(`[Billing] Created subscription for ${shop}, redirecting to Shopify approval`);
+    res.redirect(result.confirmationUrl);
+  });
+
+  app.get("/billing/callback", async (req, res) => {
+    const shop = req.query.shop as string;
+    const chargeId = req.query.charge_id as string;
+    
+    if (!shop) {
+      return res.status(400).send("Missing shop parameter");
+    }
+
+    const session = await sessionStorage.findSessionByShop(shop);
+    if (!session) {
+      return res.status(404).send("Shop not found");
+    }
+
+    // Check if subscription was approved
+    const subscription = await getCurrentSubscription(shop, session.accessToken);
+    
+    if (subscription && subscription.status === 'ACTIVE') {
+      // Update plan in our storage
+      await sessionStorage.updatePlan(shop, 'pro', subscription.id);
+      console.log(`[Billing] Pro subscription activated for ${shop}`);
+      
+      const host = process.env.HOST || '';
+      res.redirect(`${host}/?shop=${shop}&upgraded=true`);
+    } else {
+      // Subscription was declined
+      console.log(`[Billing] Subscription declined for ${shop}`);
+      const host = process.env.HOST || '';
+      res.redirect(`${host}/?shop=${shop}&upgrade_failed=true`);
+    }
+  });
+  // END BILLING ROUTES
 
   app.get("/health", (req, res) => {
     res.json({ status: "ok", mode: "http", clients: transports.size });

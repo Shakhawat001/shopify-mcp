@@ -13,6 +13,18 @@ export interface StoredSession {
   createdAt: string;
   isOnline: boolean;
   state?: string;
+  // Billing fields
+  plan: 'free' | 'pro';
+  usageCount: number;           // Tool calls this billing period
+  usageResetDate: string;       // ISO date when to reset counter
+  subscriptionId?: string;      // Shopify subscription GID
+}
+
+// Helper to calculate next billing reset date (30 days from now)
+function getNextBillingDate(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  return date.toISOString();
 }
 
 // File path for persistent storage
@@ -68,6 +80,10 @@ export class FileSessionStorage {
       createdAt: existingByShop?.createdAt || new Date().toISOString(),
       isOnline: session.isOnline || false,
       state: session.state,
+      // Billing defaults - preserve existing values if re-authenticating
+      plan: existingByShop?.plan || 'free',
+      usageCount: existingByShop?.usageCount || 0,
+      usageResetDate: existingByShop?.usageResetDate || getNextBillingDate(),
     };
     
     this.sessions[session.id] = stored;
@@ -129,6 +145,74 @@ export class FileSessionStorage {
   // List all sessions (for debug)
   getAllSessions(): StoredSession[] {
     return Object.values(this.sessions);
+  }
+
+  // Increment usage count for a shop (called on each MCP tool use)
+  async incrementUsage(shop: string): Promise<{ allowed: boolean; count: number; limit: number }> {
+    const session = Object.values(this.sessions).find(s => s.shop === shop);
+    if (!session) {
+      return { allowed: false, count: 0, limit: 0 };
+    }
+
+    // Check if we need to reset the counter (billing period expired)
+    if (new Date(session.usageResetDate) < new Date()) {
+      session.usageCount = 0;
+      session.usageResetDate = getNextBillingDate();
+      console.log(`[Billing] Reset usage counter for ${shop}`);
+    }
+
+    // Pro plan = unlimited
+    if (session.plan === 'pro') {
+      session.usageCount++;
+      this.saveToFile();
+      return { allowed: true, count: session.usageCount, limit: -1 };
+    }
+
+    // Free plan = check limit (200 calls)
+    const FREE_LIMIT = 200;
+    if (session.usageCount >= FREE_LIMIT) {
+      return { allowed: false, count: session.usageCount, limit: FREE_LIMIT };
+    }
+
+    session.usageCount++;
+    this.saveToFile();
+    return { allowed: true, count: session.usageCount, limit: FREE_LIMIT };
+  }
+
+  // Update plan for a shop
+  async updatePlan(shop: string, plan: 'free' | 'pro', subscriptionId?: string): Promise<boolean> {
+    const session = Object.values(this.sessions).find(s => s.shop === shop);
+    if (!session) {
+      return false;
+    }
+
+    session.plan = plan;
+    if (subscriptionId) {
+      session.subscriptionId = subscriptionId;
+    }
+    
+    // Reset usage when upgrading to pro
+    if (plan === 'pro') {
+      session.usageCount = 0;
+      session.usageResetDate = getNextBillingDate();
+    }
+    
+    this.saveToFile();
+    console.log(`[Billing] Updated plan for ${shop} to ${plan}`);
+    return true;
+  }
+
+  // Get usage stats for a shop
+  async getUsageStats(shop: string): Promise<{ plan: string; usageCount: number; limit: number; resetDate: string } | null> {
+    const session = Object.values(this.sessions).find(s => s.shop === shop);
+    if (!session) return null;
+    
+    return {
+      plan: session.plan,
+      usageCount: session.usageCount,
+      limit: session.plan === 'pro' ? -1 : 200,
+      resetDate: session.usageResetDate,
+    };
   }
 }
 
