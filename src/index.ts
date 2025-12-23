@@ -11,6 +11,8 @@ import { shopifyApi, ApiVersion, Session } from "@shopify/shopify-api";
 import { sessionStorage } from "./session-storage.js";
 import { renderDashboard } from "./templates/dashboard.js";
 import { renderNewDashboard } from "./templates/dashboard-new.js";
+import { renderOnboarding } from "./templates/onboarding.js";
+import { renderBillingPage } from "./templates/billing.js";
 import { renderPrivacyPolicy, renderTermsOfService } from "./templates/legal.js";
 import { authMiddleware, cspMiddleware } from "./middleware/auth.js";
 import { createProSubscription, getCurrentSubscription, PRICING, formatPrice } from "./billing/billing.js";
@@ -73,6 +75,7 @@ async function startHttpServer() {
   // START OAUTH ROUTES
   app.get("/", async (req, res) => {
     const shop = req.query.shop as string;
+    const tool = req.query.tool as 'n8n' | 'chatgpt' | 'claude' | 'other' | undefined;
     const host = process.env.HOST || 'https://your-server.com';
     
 
@@ -94,7 +97,18 @@ async function startHttpServer() {
       }
     }
     
-    // Use new simplified dashboard
+    // If tool is selected, show onboarding wizard
+    if (tool) {
+      const html = renderOnboarding({
+        host,
+        shop: shop || null,
+        apiKey,
+        selectedTool: tool
+      });
+      return res.send(html);
+    }
+    
+    // Otherwise show dashboard
     const html = renderNewDashboard({
       host,
       shop: shop || null,
@@ -155,22 +169,19 @@ async function startHttpServer() {
     }
 
     const session = await sessionStorage.findSessionByShop(shop);
+    const host = process.env.HOST || '';
     
-    res.json({
-      plan: stats.plan,
-      displayName: stats.plan === 'pro' ? 'Pro' : 'Free',
-      price: stats.plan === 'pro' ? formatPrice('pro') : 'Free',
-      usage: {
-        current: stats.usageCount,
-        limit: stats.limit === -1 ? 'Unlimited' : stats.limit,
-        resetDate: stats.resetDate,
-      },
-      upgrade: stats.plan === 'free' ? {
-        available: true,
-        url: `/billing/subscribe?shop=${shop}`,
-        price: formatPrice('pro'),
-      } : null,
+    // Render new billing page
+    const html = renderBillingPage({
+      host,
+      shop,
+      currentPlan: (stats.plan as 'free' | 'pro') || 'free',
+      usageCount: stats.usageCount,
+      usageLimit: stats.limit,
+      resetDate: stats.resetDate,
     });
+    
+    res.send(html);
   });
 
   app.get("/billing/subscribe", async (req, res) => {
