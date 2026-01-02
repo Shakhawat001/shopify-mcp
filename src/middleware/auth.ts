@@ -69,16 +69,28 @@ export const authMiddleware = async (
     const usage = await sessionStorage.incrementUsage(session.shop);
     
     if (!usage.allowed) {
-      console.log(`[Billing] Free tier limit reached for ${session.shop}. Usage: ${usage.count}/${usage.limit}`);
+      const plan = session.plan || 'free';
+      console.log(`[Billing] ${plan} tier limit reached for ${session.shop}. Usage: ${usage.count}/${usage.limit}`);
+      
+      // Determine upgrade path
+      const upgradeInfo = plan === 'free' 
+        ? {
+            url: `/billing/subscribe?shop=${session.shop}&plan=starter`,
+            plan: "Starter",
+            price: "$4.99/mo",
+            benefits: "500 tool calls/month"
+          }
+        : {
+            url: `/billing/subscribe?shop=${session.shop}&plan=pro`,
+            plan: "Pro",
+            price: "$29.99/mo",
+            benefits: "Unlimited tool calls"
+          };
+      
       return res.status(402).json({
         error: "Usage limit reached",
-        message: `You've used ${usage.count} of ${usage.limit} free tool calls this month.`,
-        upgrade: {
-          url: `/billing/subscribe?shop=${session.shop}`,
-          plan: "Pro",
-          price: "$6.99/mo (30% launch discount)",
-          benefits: "Unlimited tool calls"
-        }
+        message: `You've used ${usage.count} of ${usage.limit} tool calls this month on the ${plan} plan.`,
+        upgrade: upgradeInfo
       });
     }
     

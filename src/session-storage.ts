@@ -1,232 +1,332 @@
-import { Session } from '@shopify/shopify-api';
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+/**
+ * Session Storage - PostgreSQL with Prisma
+ * Production-ready session storage with encrypted tokens and billing tracking
+ */
 
-// Extended session data with API key for MCP authentication
+import { PrismaClient, Session as PrismaSession } from '@prisma/client';
+import { Session } from '@shopify/shopify-api';
+import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
+
+// Initialize Prisma Client
+const prisma = new PrismaClient();
+
+// Encryption helpers
+const ENCRYPTION_KEY = process.env.SESSION_ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+const IV_LENGTH = 16;
+
+function encrypt(text: string): string {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0'));
+  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + ':' + encrypted;
+}
+
+function decrypt(text: string): string {
+  try {
+    const parts = text.split(':');
+    const iv = Buffer.from(parts.shift()!, 'hex');
+    const encrypted = parts.join(':');
+    const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0'));
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (error) {
+    console.error('[SessionStorage] Decryption failed:', error);
+    return text; // Return as-is if decryption fails (legacy data)
+  }
+}
+
+// Extended session data interface
 export interface StoredSession {
   id: string;
   shop: string;
   accessToken: string;
-  scope: string;
-  apiKey: string;  // Unique key for this store to use with MCP
+  scope: string | null;
+  apiKey: string;
   createdAt: string;
   isOnline: boolean;
-  state?: string;
-  // Billing fields
-  plan: 'free' | 'pro';
-  usageCount: number;           // Tool calls this billing period
-  usageResetDate: string;       // ISO date when to reset counter
-  subscriptionId?: string;      // Shopify subscription GID
+  state?: string | null;
+  plan: 'free' | 'starter' | 'pro';
+  usageCount: number;
+  usageResetDate: string;
+  subscriptionId?: string | null;
 }
+
+// Usage limits per plan
+const USAGE_LIMITS = {
+  free: 70,
+  starter: 500,
+  pro: -1, // Unlimited
+} as const;
 
 // Helper to calculate next billing reset date (30 days from now)
-function getNextBillingDate(): string {
+function getNextBillingDate(): Date {
   const date = new Date();
   date.setDate(date.getDate() + 30);
-  return date.toISOString();
+  return date;
 }
 
-// File path for persistent storage
-const DATA_DIR = process.env.DATA_DIR || './data';
-const SESSIONS_FILE = `${DATA_DIR}/sessions.json`;
+// Convert Prisma session to StoredSession
+function toStoredSession(prismaSession: PrismaSession): StoredSession {
+  return {
+    id: prismaSession.id,
+    shop: prismaSession.shop,
+    accessToken: decrypt(prismaSession.accessToken),
+    scope: prismaSession.scope,
+    apiKey: prismaSession.apiKey,
+    createdAt: prismaSession.createdAt.toISOString(),
+    isOnline: prismaSession.isOnline,
+    state: prismaSession.state,
+    plan: prismaSession.plan as 'free' | 'starter' | 'pro',
+    usageCount: prismaSession.usageCount,
+    usageResetDate: prismaSession.usageResetDate.toISOString(),
+    subscriptionId: prismaSession.subscriptionId,
+  };
+}
 
-export class FileSessionStorage {
-  private sessions: Record<string, StoredSession> = {};
-
-  constructor() {
-    this.loadFromFile();
-  }
-
-  private loadFromFile(): void {
-    try {
-      if (existsSync(SESSIONS_FILE)) {
-        const data = readFileSync(SESSIONS_FILE, 'utf-8');
-        this.sessions = JSON.parse(data);
-        console.log(`[SessionStorage] Loaded ${Object.keys(this.sessions).length} sessions from file`);
-      } else {
-        console.log('[SessionStorage] No existing sessions file, starting fresh');
-      }
-    } catch (error) {
-      console.error('[SessionStorage] Error loading sessions:', error);
-      this.sessions = {};
-    }
-  }
-
-  private saveToFile(): void {
-    try {
-      // Ensure directory exists
-      const dir = dirname(SESSIONS_FILE);
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
-      }
-      writeFileSync(SESSIONS_FILE, JSON.stringify(this.sessions, null, 2));
-    } catch (error) {
-      console.error('[SessionStorage] Error saving sessions:', error);
-    }
-  }
-
+export class PostgresSessionStorage {
   async storeSession(session: Session): Promise<boolean> {
-    // Check if this shop already has a session (preserve API key)
-    const existingByShop = await this.findSessionByShop(session.shop);
-    const apiKey = existingByShop?.apiKey || `sk_live_${uuidv4()}`;
-    
-    const stored: StoredSession = {
-      id: session.id,
-      shop: session.shop,
-      accessToken: session.accessToken || '',
-      scope: session.scope || '',
-      apiKey: apiKey,
-      createdAt: existingByShop?.createdAt || new Date().toISOString(),
-      isOnline: session.isOnline || false,
-      state: session.state,
-      // Billing defaults - preserve existing values if re-authenticating
-      plan: existingByShop?.plan || 'free',
-      usageCount: existingByShop?.usageCount || 0,
-      usageResetDate: existingByShop?.usageResetDate || getNextBillingDate(),
-    };
-    
-    this.sessions[session.id] = stored;
-    this.saveToFile();
-    console.log(`[SessionStorage] Stored session for ${session.shop} with API key: ${apiKey.substring(0, 12)}...`);
-    return true;
+    try {
+      // Check if this shop already has a session (preserve API key)
+      const existing = await prisma.session.findUnique({
+        where: { shop: session.shop },
+      });
+
+      const apiKey = existing?.apiKey || `sk_live_${uuidv4()}`;
+      const encryptedToken = encrypt(session.accessToken || '');
+
+      await prisma.session.upsert({
+        where: { shop: session.shop },
+        update: {
+          id: session.id,
+          accessToken: encryptedToken,
+          scope: session.scope || null,
+          isOnline: session.isOnline || false,
+          state: session.state || null,
+        },
+        create: {
+          id: session.id,
+          shop: session.shop,
+          accessToken: encryptedToken,
+          scope: session.scope || null,
+          apiKey: apiKey,
+          isOnline: session.isOnline || false,
+          state: session.state || null,
+          plan: 'free',
+          usageCount: 0,
+          usageResetDate: getNextBillingDate(),
+        },
+      });
+
+      console.log(`[SessionStorage] Stored session for ${session.shop} with API key: ${apiKey.substring(0, 12)}...`);
+      return true;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to store session:', error);
+      return false;
+    }
   }
 
   async loadSession(id: string): Promise<Session | undefined> {
-    const stored = this.sessions[id];
-    if (stored) {
-      // Reconstruct a Session object
-      return new Session({
-        id: stored.id,
-        shop: stored.shop,
-        accessToken: stored.accessToken,
-        scope: stored.scope,
-        isOnline: stored.isOnline,
-        state: stored.state || '',
+    try {
+      const stored = await prisma.session.findUnique({
+        where: { id },
       });
+
+      if (stored) {
+        return new Session({
+          id: stored.id,
+          shop: stored.shop,
+          accessToken: decrypt(stored.accessToken),
+          scope: stored.scope || '',
+          isOnline: stored.isOnline,
+          state: stored.state || '',
+        });
+      }
+      return undefined;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to load session:', error);
+      return undefined;
     }
-    return undefined;
   }
 
   async deleteSession(id: string): Promise<boolean> {
-    delete this.sessions[id];
-    this.saveToFile();
-    return true;
+    try {
+      await prisma.session.delete({
+        where: { id },
+      });
+      return true;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to delete session:', error);
+      return false;
+    }
   }
-  
-  // Find session by shop domain
+
   async findSessionByShop(shop: string): Promise<StoredSession | undefined> {
-    return Object.values(this.sessions).find(s => s.shop === shop);
+    try {
+      const session = await prisma.session.findUnique({
+        where: { shop },
+      });
+      return session ? toStoredSession(session) : undefined;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to find session by shop:', error);
+      return undefined;
+    }
   }
 
-  // Find session by API key (main auth method for MCP)
   async findSessionByApiKey(apiKey: string): Promise<StoredSession | undefined> {
-    return Object.values(this.sessions).find(s => s.apiKey === apiKey);
+    try {
+      const session = await prisma.session.findUnique({
+        where: { apiKey },
+      });
+      return session ? toStoredSession(session) : undefined;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to find session by API key:', error);
+      return undefined;
+    }
   }
 
-  // Get API key for a shop (for dashboard display)
   async getApiKeyForShop(shop: string): Promise<string | undefined> {
     const session = await this.findSessionByShop(shop);
     return session?.apiKey;
   }
 
-  // Regenerate API key for a shop
   async regenerateApiKey(shop: string): Promise<string | undefined> {
-    const session = Object.values(this.sessions).find(s => s.shop === shop);
-    if (session) {
-      session.apiKey = `sk_live_${uuidv4()}`;
-      this.saveToFile();
+    try {
+      const newApiKey = `sk_live_${uuidv4()}`;
+      await prisma.session.update({
+        where: { shop },
+        data: { apiKey: newApiKey },
+      });
       console.log(`[SessionStorage] Regenerated API key for ${shop}`);
-      return session.apiKey;
+      return newApiKey;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to regenerate API key:', error);
+      return undefined;
     }
-    return undefined;
   }
 
-  // List all sessions (for debug)
-  getAllSessions(): StoredSession[] {
-    return Object.values(this.sessions);
+  async getAllSessions(): Promise<StoredSession[]> {
+    try {
+      const sessions = await prisma.session.findMany();
+      return sessions.map(toStoredSession);
+    } catch (error) {
+      console.error('[SessionStorage] Failed to get all sessions:', error);
+      return [];
+    }
   }
 
-  // Increment usage count for a shop (called on each MCP tool use)
   async incrementUsage(shop: string): Promise<{ allowed: boolean; count: number; limit: number }> {
-    const session = Object.values(this.sessions).find(s => s.shop === shop);
-    if (!session) {
+    try {
+      const session = await prisma.session.findUnique({
+        where: { shop },
+      });
+
+      if (!session) {
+        return { allowed: false, count: 0, limit: 0 };
+      }
+
+      // Check if we need to reset the counter (billing period expired)
+      const resetDate = new Date(session.usageResetDate);
+      let usageCount = session.usageCount;
+
+      if (resetDate < new Date()) {
+        usageCount = 0;
+        await prisma.session.update({
+          where: { shop },
+          data: {
+            usageCount: 0,
+            usageResetDate: getNextBillingDate(),
+          },
+        });
+        console.log(`[Billing] Reset usage counter for ${shop}`);
+      }
+
+      const plan = session.plan as 'free' | 'starter' | 'pro';
+      const limit = USAGE_LIMITS[plan];
+
+      // Pro plan = unlimited
+      if (limit === -1) {
+        await prisma.session.update({
+          where: { shop },
+          data: { usageCount: { increment: 1 } },
+        });
+        return { allowed: true, count: usageCount + 1, limit: -1 };
+      }
+
+      // Check limit for free/starter
+      if (usageCount >= limit) {
+        return { allowed: false, count: usageCount, limit };
+      }
+
+      await prisma.session.update({
+        where: { shop },
+        data: { usageCount: { increment: 1 } },
+      });
+
+      return { allowed: true, count: usageCount + 1, limit };
+    } catch (error) {
+      console.error('[SessionStorage] Failed to increment usage:', error);
       return { allowed: false, count: 0, limit: 0 };
     }
-
-    // Check if we need to reset the counter (billing period expired)
-    if (new Date(session.usageResetDate) < new Date()) {
-      session.usageCount = 0;
-      session.usageResetDate = getNextBillingDate();
-      console.log(`[Billing] Reset usage counter for ${shop}`);
-    }
-
-    // Pro plan = unlimited
-    if (session.plan === 'pro') {
-      session.usageCount++;
-      this.saveToFile();
-      return { allowed: true, count: session.usageCount, limit: -1 };
-    }
-
-    // Free plan = check limit (200 calls)
-    const FREE_LIMIT = 200;
-    if (session.usageCount >= FREE_LIMIT) {
-      return { allowed: false, count: session.usageCount, limit: FREE_LIMIT };
-    }
-
-    session.usageCount++;
-    this.saveToFile();
-    return { allowed: true, count: session.usageCount, limit: FREE_LIMIT };
   }
 
-  // Update plan for a shop
-  async updatePlan(shop: string, plan: 'free' | 'pro', subscriptionId?: string): Promise<boolean> {
-    const session = Object.values(this.sessions).find(s => s.shop === shop);
-    if (!session) {
+  async updatePlan(shop: string, plan: 'free' | 'starter' | 'pro', subscriptionId?: string): Promise<boolean> {
+    try {
+      await prisma.session.update({
+        where: { shop },
+        data: {
+          plan,
+          subscriptionId: subscriptionId || null,
+          // Reset usage when upgrading
+          usageCount: 0,
+          usageResetDate: getNextBillingDate(),
+        },
+      });
+      console.log(`[Billing] Updated plan for ${shop} to ${plan}`);
+      return true;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to update plan:', error);
       return false;
     }
-
-    session.plan = plan;
-    if (subscriptionId) {
-      session.subscriptionId = subscriptionId;
-    }
-    
-    // Reset usage when upgrading to pro
-    if (plan === 'pro') {
-      session.usageCount = 0;
-      session.usageResetDate = getNextBillingDate();
-    }
-    
-    this.saveToFile();
-    console.log(`[Billing] Updated plan for ${shop} to ${plan}`);
-    return true;
   }
 
-  // Get usage stats for a shop
   async getUsageStats(shop: string): Promise<{ plan: string; usageCount: number; limit: number; resetDate: string } | null> {
-    const session = Object.values(this.sessions).find(s => s.shop === shop);
-    if (!session) return null;
-    
-    return {
-      plan: session.plan,
-      usageCount: session.usageCount,
-      limit: session.plan === 'pro' ? -1 : 200,
-      resetDate: session.usageResetDate,
-    };
+    try {
+      const session = await prisma.session.findUnique({
+        where: { shop },
+      });
+
+      if (!session) return null;
+
+      const plan = session.plan as 'free' | 'starter' | 'pro';
+      return {
+        plan: session.plan,
+        usageCount: session.usageCount,
+        limit: USAGE_LIMITS[plan],
+        resetDate: session.usageResetDate.toISOString(),
+      };
+    } catch (error) {
+      console.error('[SessionStorage] Failed to get usage stats:', error);
+      return null;
+    }
   }
 
-  // Delete session by shop (for GDPR shop/redact)
   async deleteSessionByShop(shop: string): Promise<boolean> {
-    const session = Object.values(this.sessions).find(s => s.shop === shop);
-    if (!session) {
+    try {
+      await prisma.session.delete({
+        where: { shop },
+      });
+      console.log(`[SessionStorage] Deleted session for ${shop}`);
+      return true;
+    } catch (error) {
+      console.error('[SessionStorage] Failed to delete session by shop:', error);
       return false;
     }
-    
-    delete this.sessions[session.id];
-    this.saveToFile();
-    console.log(`[SessionStorage] Deleted session for ${shop}`);
-    return true;
   }
 }
 
-export const sessionStorage = new FileSessionStorage();
+export const sessionStorage = new PostgresSessionStorage();

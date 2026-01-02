@@ -46,7 +46,35 @@ async function startHttpServer() {
   const shopify = shopifyApi({
     apiKey: process.env.SHOPIFY_API_KEY || "invalid_key",
     apiSecretKey: process.env.SHOPIFY_API_SECRET || "invalid_secret",
-    scopes: ["read_products", "write_products", "read_orders"],
+    scopes: [
+      // Products
+      "read_products", "write_products",
+      // Orders (read/write for full order management)
+      "read_orders", "write_orders",
+      // Inventory
+      "read_inventory", "write_inventory",
+      // Fulfillment
+      "read_fulfillments", "write_fulfillments",
+      // Shipping
+      "read_shipping", "write_shipping",
+      // Discounts & Price Rules
+      "read_discounts", "write_discounts",
+      "read_price_rules", "write_price_rules",
+      // Content (Blogs)
+      "read_content", "write_content",
+      // Draft Orders
+      "read_draft_orders", "write_draft_orders",
+      // Gift Cards
+      "read_gift_cards", "write_gift_cards",
+      // Files
+      "read_files", "write_files",
+      // Locations
+      "read_locations",
+      // Markets (International)
+      "read_markets",
+      // NOTE: Customer scopes omitted - require Protected Customer Data approval
+      // Add later: "read_customers", "write_customers"
+    ],
     hostName: process.env.HOST ? process.env.HOST.replace(/https?:\/\//, "") : "localhost:3000",
     apiVersion: ApiVersion.January25, 
     isEmbeddedApp: false,
@@ -84,7 +112,7 @@ async function startHttpServer() {
     let isAuthorized = false;
     let usageCount = 0;
     let usageLimit = 200;
-    let plan: 'free' | 'pro' = 'free';
+    let plan: 'free' | 'starter' | 'pro' = 'free';
     
     if (shop) {
       const storedSession = await sessionStorage.findSessionByShop(shop);
@@ -175,7 +203,7 @@ async function startHttpServer() {
     const html = renderBillingPage({
       host,
       shop,
-      currentPlan: (stats.plan as 'free' | 'pro') || 'free',
+      currentPlan: (stats.plan as 'free' | 'starter' | 'pro') || 'free',
       usageCount: stats.usageCount,
       usageLimit: stats.limit,
       resetDate: stats.resetDate,

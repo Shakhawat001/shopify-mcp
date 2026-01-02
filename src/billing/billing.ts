@@ -3,45 +3,62 @@
  * Handles subscription management using Shopify GraphQL Billing API
  */
 
-// Pricing configuration
+// Pricing configuration - Competitive 3-tier structure
 export const PRICING = {
   FREE: {
     name: 'free',
     displayName: 'Free',
     price: 0,
-    usageLimit: 200, // tool calls per month
+    usageLimit: 70, // tool calls per month
+  },
+  STARTER: {
+    name: 'starter',
+    displayName: 'Starter',
+    price: 4.99,
+    usageLimit: 500, // tool calls per month
   },
   PRO: {
     name: 'pro',
     displayName: 'Pro',
-    price: 9.99,
+    price: 29.99,
     usageLimit: -1, // unlimited
     trialDays: 0,
-    // Launch discount: 30% off for first 3 months
-    launchDiscount: {
-      percentage: 0.30,
-      durationInIntervals: 3,
-    }
   }
 } as const;
 
-export type PlanType = 'free' | 'pro';
+export type PlanType = 'free' | 'starter' | 'pro';
+
+// Helper to determine if test mode should be used
+// CRITICAL: Must be undefined (not false) in production for live charges
+function getTestMode(): boolean | undefined {
+  if (process.env.NODE_ENV === 'production') {
+    return undefined; // Shopify requires undefined, not false
+  }
+  return true; // Test mode for development
+}
 
 /**
- * Create a Pro subscription using Shopify GraphQL
+ * Create a subscription using Shopify GraphQL
  */
-export async function createProSubscription(
+export async function createSubscription(
   shopDomain: string,
   accessToken: string,
-  returnUrl: string
+  returnUrl: string,
+  plan: 'starter' | 'pro'
 ): Promise<{ confirmationUrl: string; subscriptionId: string } | null> {
+  const planConfig = plan === 'starter' ? PRICING.STARTER : PRICING.PRO;
+  const testMode = getTestMode();
+  
+  // Build test parameter - only include if not undefined
+  const testParam = testMode !== undefined ? `test: ${testMode}` : '';
+  
   const mutation = `
     mutation AppSubscriptionCreate($name: String!, $returnUrl: URL!, $lineItems: [AppSubscriptionLineItemInput!]!) {
       appSubscriptionCreate(
         name: $name
         returnUrl: $returnUrl
         lineItems: $lineItems
-        test: ${process.env.NODE_ENV !== 'production'}
+        ${testParam}
       ) {
         appSubscription {
           id
@@ -57,19 +74,14 @@ export async function createProSubscription(
   `;
 
   const variables = {
-    name: "Shopify MCP Pro",
+    name: `MCP for Shopify ${planConfig.displayName}`,
     returnUrl,
     lineItems: [
       {
         plan: {
           appRecurringPricingDetails: {
-            price: { amount: PRICING.PRO.price, currencyCode: "USD" },
-            interval: "EVERY_30_DAYS",
-            // Apply launch discount
-            discount: {
-              value: { percentage: PRICING.PRO.launchDiscount.percentage },
-              durationLimitInIntervals: PRICING.PRO.launchDiscount.durationInIntervals
-            }
+            price: { amount: planConfig.price, currencyCode: "USD" },
+            interval: "EVERY_30_DAYS"
           }
         }
       }
@@ -107,6 +119,19 @@ export async function createProSubscription(
     return null;
   }
 }
+
+// Legacy function name for backward compatibility
+export const createProSubscription = (
+  shopDomain: string,
+  accessToken: string,
+  returnUrl: string
+) => createSubscription(shopDomain, accessToken, returnUrl, 'pro');
+
+export const createStarterSubscription = (
+  shopDomain: string,
+  accessToken: string,
+  returnUrl: string
+) => createSubscription(shopDomain, accessToken, returnUrl, 'starter');
 
 /**
  * Get current subscription status
@@ -213,10 +238,11 @@ export async function cancelSubscription(
 }
 
 /**
- * Check if usage limit is exceeded for free plan
+ * Check if usage limit is exceeded for a plan
  */
 export function isUsageLimitExceeded(plan: PlanType, usageCount: number): boolean {
   if (plan === 'pro') return false; // Pro is unlimited
+  if (plan === 'starter') return usageCount >= PRICING.STARTER.usageLimit;
   return usageCount >= PRICING.FREE.usageLimit;
 }
 
@@ -224,7 +250,11 @@ export function isUsageLimitExceeded(plan: PlanType, usageCount: number): boolea
  * Get usage limit for a plan
  */
 export function getUsageLimit(plan: PlanType): number {
-  return plan === 'pro' ? -1 : PRICING.FREE.usageLimit;
+  switch (plan) {
+    case 'pro': return -1;
+    case 'starter': return PRICING.STARTER.usageLimit;
+    default: return PRICING.FREE.usageLimit;
+  }
 }
 
 /**
@@ -233,9 +263,15 @@ export function getUsageLimit(plan: PlanType): number {
 export function formatPrice(plan: PlanType): string {
   if (plan === 'free') return 'Free';
   
-  // Show discounted price during launch
-  const originalPrice = PRICING.PRO.price;
-  const discountedPrice = originalPrice * (1 - PRICING.PRO.launchDiscount.percentage);
-  
-  return `$${discountedPrice.toFixed(2)}/mo (30% off launch special!)`;
+  const pricing = plan === 'starter' ? PRICING.STARTER : PRICING.PRO;
+  return `$${pricing.price.toFixed(2)}/mo`;
+}
+
+/**
+ * Get original price for display
+ */
+export function getOriginalPrice(plan: PlanType): string {
+  if (plan === 'free') return '$0';
+  const pricing = plan === 'starter' ? PRICING.STARTER : PRICING.PRO;
+  return `$${pricing.price.toFixed(2)}/mo`;
 }

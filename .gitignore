@@ -5,3 +5,5 @@ dist
 temp-app-creation
 coverage
 .nyc_output
+
+/src/generated/prisma

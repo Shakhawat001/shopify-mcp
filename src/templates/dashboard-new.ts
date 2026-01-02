@@ -10,7 +10,7 @@ export interface DashboardParams {
   isAuthorized: boolean;
   usageCount?: number;
   usageLimit?: number;
-  plan?: 'free' | 'pro';
+  plan?: 'free' | 'starter' | 'pro';
 }
 
 export function renderNewDashboard(params: DashboardParams): string {

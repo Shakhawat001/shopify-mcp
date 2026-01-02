@@ -7,11 +7,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies (including dev deps for building)
 RUN npm ci
 
-# Copy source code
+# Copy source code and Prisma schema
 COPY . .
+
+# Generate Prisma Client
+RUN npx prisma generate
 
 # Build TypeScript
 RUN npm run build
@@ -21,10 +24,12 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Copy built artifacts and dependencies
+# Copy built artifacts, dependencies, and Prisma files
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
 
 # Install curl for healthcheck
 RUN apk add --no-cache curl
@@ -32,5 +37,5 @@ RUN apk add --no-cache curl
 # Expose port
 EXPOSE 38383
 
-# Start server
-CMD ["node", "dist/index.js"]
+# Run database migrations and start server
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]

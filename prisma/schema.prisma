@@ -1,0 +1,27 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Session {
+  id                String   @id @default(uuid())
+  shop              String   @unique
+  accessToken       String   // Will be encrypted before storage
+  scope             String?
+  apiKey            String   @unique
+  createdAt         DateTime @default(now())
+  isOnline          Boolean  @default(false)
+  state             String?
+  
+  // Billing fields
+  plan              String   @default("free") // "free" | "starter" | "pro"
+  usageCount        Int      @default(0)
+  usageResetDate    DateTime @default(now())
+  subscriptionId    String?
+  
+  @@index([shop])
+  @@index([apiKey])
+}

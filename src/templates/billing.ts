@@ -6,7 +6,7 @@
 export interface BillingParams {
   host: string;
   shop: string | null;
-  currentPlan: 'free' | 'pro';
+  currentPlan: 'free' | 'starter' | 'pro';
   usageCount: number;
   usageLimit: number;
   resetDate?: string;
