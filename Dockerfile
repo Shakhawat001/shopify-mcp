@@ -1,6 +1,9 @@
 # Use Node.js 20 Alpine for lightweight image
 FROM node:20-alpine AS builder
 
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
+
 # Set working directory
 WORKDIR /app
 
@@ -22,6 +25,9 @@ RUN npm run build
 # --- Production Stage ---
 FROM node:20-alpine AS runner
 
+# Install OpenSSL and curl for Prisma and healthcheck
+RUN apk add --no-cache openssl curl
+
 WORKDIR /app
 
 # Copy built artifacts, dependencies, and Prisma files
@@ -29,9 +35,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
-
-# Install curl for healthcheck
-RUN apk add --no-cache curl
 
 # Expose port
 EXPOSE 38383
