@@ -8,7 +8,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-shopify_mcp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-f2f5d4ac8e362d90d5e4e717fad8ea67}
       POSTGRES_DB: ${POSTGRES_DB:-shopify_mcp}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -34,8 +34,8 @@ services:
       NODE_ENV: production
       
       # --- Database ---
-      DATABASE_URL: postgresql://${POSTGRES_USER:-shopify_mcp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-shopify_mcp}
-      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-shopify_mcp}:${POSTGRES_PASSWORD:-f2f5d4ac8e362d90d5e4e717fad8ea67}@postgres:5432/${POSTGRES_DB:-shopify_mcp}
+      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY:-eba51fffc4a50a40b77b9bd17a93d3571c9e6ebe4deb2f826e6e71a0e60d1554}
       
       # --- Shopify OAuth ---
       HOST: ${HOST}
