@@ -1,8 +1,8 @@
-# Use Node.js 20 Alpine for lightweight image
-FROM node:20-alpine AS builder
+# Use Node.js 20 Debian slim for better native module compatibility
+FROM node:20-slim AS builder
 
 # Install OpenSSL for Prisma
-RUN apk add --no-cache openssl
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /app
@@ -23,10 +23,10 @@ RUN npx prisma generate
 RUN npm run build
 
 # --- Production Stage ---
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 # Install OpenSSL and curl for Prisma and healthcheck
-RUN apk add --no-cache openssl curl
+RUN apt-get update && apt-get install -y openssl ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
