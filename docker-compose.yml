@@ -1,41 +1,21 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    container_name: shopify-mcp-db
-    restart: always
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-shopify_mcp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-f2f5d4ac8e362d90d5e4e717fad8ea67}
-      POSTGRES_DB: ${POSTGRES_DB:-shopify_mcp}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-shopify_mcp}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # MCP Server
   shopify-mcp-server:
     build: .
     container_name: shopify-mcp
     restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - "${SERVER_PORT:-38383}:38383"
+    volumes:
+      # Persist session data across container restarts
+      - ./data:/app/data
     environment:
       # --- General ---
       PORT: 38383
+      DATA_DIR: /app/data
       NODE_ENV: production
-      
-      # --- Database ---
-      DATABASE_URL: postgresql://${POSTGRES_USER:-shopify_mcp}:${POSTGRES_PASSWORD:-f2f5d4ac8e362d90d5e4e717fad8ea67}@postgres:5432/${POSTGRES_DB:-shopify_mcp}
-      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY:-eba51fffc4a50a40b77b9bd17a93d3571c9e6ebe4deb2f826e6e71a0e60d1554}
       
       # --- Shopify OAuth ---
       HOST: ${HOST}
@@ -48,6 +28,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-volumes:
-  postgres_data:
